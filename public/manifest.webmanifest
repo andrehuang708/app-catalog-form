@@ -1,7 +1,7 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "Kube App Onboarding Form",
+  "short_name": "Kube Onboarding",
+  "description": "Internal form for collecting legacy application details and preparing migration to Kubernetes.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

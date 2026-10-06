@@ -7,8 +7,8 @@ import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router";
 
 /**
- * The whole of version 1 lives here: the six-field intake form on the left,
- * the saved submissions list on the right, split by a single hairline rule.
+ * The whole onboarding form lives here: the six-field application form on the
+ * left, the saved list on the right, split by a single hairline rule.
  */
 export default function Dashboard() {
   const { user, signOut } = useAuth();
@@ -34,11 +34,11 @@ export default function Dashboard() {
               height={22}
               className="rounded-[5px]"
             />
-            <span className="text-sm font-medium tracking-tight">
-              Service Catalog
+            <span className="min-w-0 truncate text-sm font-medium tracking-tight">
+              Kube App Onboarding Form
             </span>
             <span className="hidden text-xs text-muted-foreground sm:inline">
-              / Platform onboarding
+              · Internal
             </span>
           </a>
 
@@ -65,20 +65,22 @@ export default function Dashboard() {
           Legacy → Kubernetes
         </p>
         <h1 className="mt-4 text-3xl font-medium tracking-tight sm:text-4xl">
-          Migration intake
+          Legacy application onboarding
         </h1>
         <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
-          One short form per application. File it once and the details are saved
-          to the service catalog for the whole platform team.
+          Fill in the six details needed to migrate an application to
+          Kubernetes. Every entry is saved and listed here for the whole
+          platform team.
         </p>
       </div>
 
       <div className="mx-auto w-full max-w-6xl border-t border-border/70 px-5 sm:px-8">
         <div className="grid lg:grid-cols-[minmax(0,25rem)_minmax(0,1fr)]">
           <section className="border-b border-border/70 py-10 lg:border-r lg:border-b-0 lg:pr-10">
-            <h2 className="text-sm font-medium">New submission</h2>
+            <h2 className="text-sm font-medium">New application</h2>
             <p className="mt-1.5 mb-7 text-sm text-muted-foreground">
-              Describe the application as it should run on the cluster.
+              Six fields describing how the application should run on
+              Kubernetes.
             </p>
             <SubmissionForm />
           </section>
@@ -91,7 +93,7 @@ export default function Dashboard() {
 
       <footer className="mx-auto w-full max-w-6xl border-t border-border/70 px-5 py-8 sm:px-8">
         <p className="text-xs text-muted-foreground">
-          Service Catalog · internal tool for the platform team
+          Kube App Onboarding Form · internal platform tool
         </p>
       </footer>
     </main>

@@ -24,9 +24,9 @@ function Detail({
 }
 
 /**
- * Saved submissions for the service catalog — the second half of version 1.
- * Rows use hairline dividers instead of a table so long values (repository,
- * health check URL) stay readable in the narrow column.
+ * Saved applications — the second half of the onboarding form. Rows use
+ * hairline dividers instead of a table so long values (repository, health
+ * check URL) stay readable in the narrow column.
  */
 export function SubmissionList() {
   const submissions = useQuery(api.catalog.list);
@@ -34,11 +34,11 @@ export function SubmissionList() {
   return (
     <div>
       <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-sm font-medium">Saved submissions</h2>
+        <h2 className="text-sm font-medium">Saved applications</h2>
         <p className="text-xs text-muted-foreground">
           {submissions === undefined
             ? "Loading…"
-            : `${submissions.length} in the catalog`}
+            : `${submissions.length} saved`}
         </p>
       </div>
 
@@ -54,10 +54,10 @@ export function SubmissionList() {
         </div>
       ) : submissions.length === 0 ? (
         <div className="mt-6 rounded-md border border-border/70 px-6 py-10 text-center">
-          <p className="text-sm font-medium">No submissions yet</p>
+          <p className="text-sm font-medium">Nothing saved yet</p>
           <p className="mx-auto mt-1.5 max-w-sm text-sm leading-6 text-muted-foreground">
-            Every intake filed from the form appears here, newest first, with
-            the details exactly as they were submitted.
+            Applications appear here as soon as someone on the platform team
+            completes the form, newest first.
           </p>
         </div>
       ) : (

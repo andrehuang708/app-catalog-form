@@ -30,8 +30,8 @@ function requireHttpUrl(value: string) {
 }
 
 /**
- * Saved submissions for the service catalog, newest first.
- * Only signed-in users can read the catalog.
+ * Saved applications from the onboarding form, newest first.
+ * Only signed-in users can read them.
  */
 export const list = query({
   args: {},
@@ -60,7 +60,7 @@ export const list = query({
 });
 
 /**
- * File a new onboarding intake. Requires a signed-in user.
+ * Save a new onboarding entry. Requires a signed-in user.
  */
 export const create = mutation({
   args: {
@@ -74,7 +74,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null)
-      throw new Error("You must be signed in to file an intake.");
+      throw new Error("You must be signed in to save an application.");
 
     const applicationName = requireText(
       args.applicationName,

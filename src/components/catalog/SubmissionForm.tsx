@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 /**
- * Version 1 collects exactly six fields. Numeric fields are kept as strings
+ * The form collects exactly six fields. Numeric fields are kept as strings
  * here so partial input ("808", " ") never becomes a number, and are only
  * converted right before the mutation runs.
  */
@@ -101,11 +101,11 @@ export function SubmissionForm() {
         healthcheckUrl: values.healthcheckUrl.trim(),
       });
       form.reset(defaultValues);
-      toast.success("Saved to the service catalog", {
-        description: `${values.applicationName.trim()} was added to the catalog.`,
+      toast.success("Application saved", {
+        description: `${values.applicationName.trim()} was added to the onboarding list.`,
       });
     } catch (error) {
-      toast.error("Could not save this submission", {
+      toast.error("Could not save this application", {
         description:
           error instanceof Error ? error.message : "Please try again.",
       });
@@ -134,7 +134,7 @@ export function SubmissionForm() {
                 />
               </FormControl>
               <FormDescription>
-                The legacy application being migrated.
+                The legacy application you are onboarding.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -157,7 +157,8 @@ export function SubmissionForm() {
                 />
               </FormControl>
               <FormDescription>
-                Kubernetes target namespace — lowercase, numbers, hyphens.
+                The Kubernetes namespace the application will run in —
+                lowercase, numbers, hyphens.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -246,7 +247,8 @@ export function SubmissionForm() {
                 />
               </FormControl>
               <FormDescription>
-                Endpoint Kubernetes should probe to verify the service.
+                The endpoint Kubernetes will probe to confirm the application is
+                healthy.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -261,12 +263,12 @@ export function SubmissionForm() {
                 Saving…
               </>
             ) : (
-              "Add to catalog"
+              "Save application"
             )}
           </Button>
           <p className="text-xs text-muted-foreground">
-            All six fields are required. Entries are visible to the whole
-            platform team.
+            All six fields are required. Everything you save is visible to the
+            whole platform team.
           </p>
         </div>
       </form>

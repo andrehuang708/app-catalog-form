@@ -11,17 +11,17 @@ const reveal = {
   transition: { duration: 0.55, ease: "easeOut" },
 } as const;
 
-/** The six fields, mirroring the real intake form one-to-one. */
+/** The six fields, mirroring the real form one-to-one. */
 const FIELDS: Array<{ name: string; description: string }> = [
   {
     name: "Application name",
     description:
-      "The legacy application being migrated — the name the catalog is indexed by.",
+      "The legacy application you are onboarding, and the name it is listed under.",
   },
   {
     name: "Namespace",
     description:
-      "The Kubernetes namespace it will run in, validated as a DNS label before it is saved.",
+      "The Kubernetes namespace the application will run in, validated as a DNS label before it is saved.",
   },
   {
     name: "Total requested worker nodes",
@@ -58,17 +58,17 @@ const STEPS: Array<{ number: string; title: string; body: string }> = [
   {
     number: "01",
     title: "Sign in",
-    body: "Platform team members sign in with their account — the catalog is not public.",
+    body: "The form is internal: your team signs in with their own account before anything can be saved.",
   },
   {
     number: "02",
-    title: "Fill the intake",
-    body: "Six fields, no pagination and no tickets. Each one is checked before it can be saved.",
+    title: "Complete the form",
+    body: "Six fields, no tickets and no hand-offs. Each one is checked before it can be saved.",
   },
   {
     number: "03",
-    title: "Saved to the catalog",
-    body: "The submission appears instantly in the shared list, with who filed it and when.",
+    title: "Saved for the team",
+    body: "The application appears instantly in the shared list, with who saved it and when.",
   },
 ];
 
@@ -91,7 +91,7 @@ export default function Landing() {
                 className="rounded-[5px]"
               />
               <span className="text-sm font-medium tracking-tight">
-                Service Catalog
+                Kube App Onboarding Form
               </span>
             </Link>
 
@@ -103,7 +103,7 @@ export default function Landing() {
                 Sign in
               </Link>
               <Button asChild size="sm">
-                <Link to="/dashboard">Open catalog</Link>
+                <Link to="/dashboard">Open the form</Link>
               </Button>
             </nav>
           </div>
@@ -113,20 +113,20 @@ export default function Landing() {
         <section className="mx-auto w-full max-w-5xl px-5 pt-20 pb-16 sm:px-8 sm:pt-28">
           <motion.div {...reveal}>
             <p className="text-[11px] font-medium tracking-[0.2em] text-muted-foreground uppercase">
-              For platform teams
+              Internal · Platform team
             </p>
             <h1 className="text-balance text-4xl leading-[1.06] font-medium tracking-tight sm:text-5xl">
               Onboard legacy applications to Kubernetes.
             </h1>
             <p className="text-muted-foreground mt-6 max-w-xl text-base leading-7">
-              Six fields, one shared catalog. Capture what the platform team
-              needs to schedule a migration — namespace, worker nodes, port,
-              repository, health check — and keep every submission in one quiet,
-              ordered list.
+              Kube App Onboarding Form collects what your platform team needs to
+              migrate a legacy application — namespace, worker nodes, port,
+              repository, health check — and keeps every saved entry in one
+              clean, ordered list.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
-                <Link to="/dashboard">Open the service catalog</Link>
+                <Link to="/dashboard">Open the form</Link>
               </Button>
               <Button asChild size="lg" variant="outline">
                 <Link to="/auth?returnTo=%2Fdashboard">Sign in</Link>
@@ -134,7 +134,7 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          {/* Intake preview — the actual six fields, as a spec sheet */}
+          {/* Form preview — the actual six fields, as a spec sheet */}
           <motion.div
             {...reveal}
             transition={{ ...reveal.transition, delay: 0.12 }}
@@ -142,7 +142,7 @@ export default function Landing() {
           >
             <div className="border-border/70 flex items-center justify-between border-b px-5 py-3">
               <span className="text-[11px] font-medium tracking-[0.16em] uppercase">
-                Intake · Version 1
+                Form preview
               </span>
               <span className="text-muted-foreground text-[11px]">
                 6 fields
@@ -162,16 +162,16 @@ export default function Landing() {
           </motion.div>
         </section>
 
-        {/* What version 1 collects */}
+        {/* What the form collects */}
         <section className="border-border/70 border-t">
           <div className="mx-auto grid w-full max-w-5xl gap-10 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-16">
             <motion.div {...reveal}>
               <h2 className="text-2xl font-medium tracking-tight">
-                What version 1 collects
+                What the form collects
               </h2>
               <p className="text-muted-foreground mt-3 text-sm leading-6">
-                Deliberately small: the intake form and the list of saved
-                submissions. Nothing else ships in this version.
+                Six fields, and nothing else. The form stays deliberately narrow
+                so a legacy application can be onboarded in under a minute.
               </p>
             </motion.div>
 
@@ -232,15 +232,16 @@ export default function Landing() {
             className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-8"
           >
             <h2 className="max-w-lg text-2xl font-medium tracking-tight">
-              File your first intake
+              Onboard your first application
             </h2>
             <p className="text-muted-foreground mt-3 max-w-xl text-sm leading-6">
-              Add an application to the service catalog in under a minute. The
-              whole platform team sees it the moment it is saved.
+              Save a legacy application to the onboarding list in under a
+              minute. Everyone on the platform team sees it the moment it is
+              saved.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
-                <Link to="/dashboard">Open the service catalog</Link>
+                <Link to="/dashboard">Open the form</Link>
               </Button>
               <Button asChild size="lg" variant="ghost">
                 <Link to="/auth?returnTo=%2Fdashboard">Sign in first</Link>
@@ -252,7 +253,9 @@ export default function Landing() {
         {/* Footer */}
         <footer className="border-border/70 border-t">
           <div className="text-muted-foreground mx-auto flex w-full max-w-5xl flex-col gap-2 px-5 py-8 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-8">
-            <span>Service Catalog · Legacy → Kubernetes onboarding</span>
+            <span>
+              Kube App Onboarding Form · Legacy → Kubernetes migration
+            </span>
             <span>Built for the platform team</span>
           </div>
         </footer>
