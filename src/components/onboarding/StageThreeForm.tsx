@@ -180,9 +180,8 @@ export function StageThreeForm({
 
       {savedServices.length > 0 && (
         <div className="border-border/70 bg-muted/40 mb-7 rounded-md border px-4 py-3 text-sm">
-          {savedServices.length} service
-          {savedServices.length === 1 ? "" : "s"} already saved. Add more below
-          and save again — the whole list is kept.
+          {`${savedServices.length} service${savedServices.length === 1 ? "" : "s"} already saved`}
+          {". Add more below and save again — the whole list is kept."}
         </div>
       )}
 
@@ -378,7 +377,7 @@ export function StageThreeForm({
         <div className="flex items-baseline justify-between gap-4">
           <h4 className="text-sm font-medium">Service list</h4>
           <p className="text-xs text-muted-foreground">
-            {combined.length} in the list
+            {`${combined.length} in the list`}
           </p>
         </div>
 

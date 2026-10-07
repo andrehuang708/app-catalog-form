@@ -112,7 +112,7 @@ export function StageTwoForm({
               <div key={row.id} className="rounded-md border border-border/70 p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-                    Node {index + 1}
+                    {`Node ${index + 1}`}
                   </p>
                   {fields.length > 1 && (
                     <Button
@@ -203,8 +203,7 @@ export function StageTwoForm({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {fields.length} of {total} worker node
-              {total === 1 ? "" : "s"}
+              {`${fields.length} of ${total} worker node${total === 1 ? "" : "s"}`}
             </p>
             <Button
               type="button"
