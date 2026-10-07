@@ -18,6 +18,14 @@ export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<ApplicationRow | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  // Every stage save refreshes the list — the Postgres-backed actions are
+  // one-shot, so the dashboard bumps a token instead of streaming updates.
+  const handleApplicationChange = (application: ApplicationRow | null) => {
+    setSelected(application);
+    setRefreshToken((token) => token + 1);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -91,7 +99,7 @@ export default function Dashboard() {
             <OnboardingWizard
               key={selected?._id ?? "new"}
               application={selected}
-              onApplicationChange={setSelected}
+              onApplicationChange={handleApplicationChange}
             />
           </section>
 
@@ -99,6 +107,7 @@ export default function Dashboard() {
             <ApplicationList
               selectedId={selected?._id ?? null}
               onSelect={setSelected}
+              refreshToken={refreshToken}
             />
           </section>
         </div>

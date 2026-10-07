@@ -17,7 +17,7 @@ import {
   workerNodesSchema,
   type StageTwoValues,
 } from "@/lib/onboarding-schema";
-import { useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { Loader2, Plus, X } from "lucide-react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ type Props = {
   application: ApplicationRow;
   initialNodes: WorkerNodeRow[];
   onBack: () => void;
-  onSaved: (nodeCount: number) => void;
+  onSaved: (savedNodes: WorkerNodeRow[]) => void;
 };
 
 /**
@@ -40,7 +40,7 @@ export function StageTwoForm({
   onBack,
   onSaved,
 }: Props) {
-  const saveNodes = useMutation(api.onboarding.saveWorkerNodes);
+  const saveNodes = useAction(api.onboarding.saveWorkerNodes);
   const total = application.totalWorkerNodes;
 
   const form = useForm<StageTwoValues>({
@@ -72,7 +72,7 @@ export function StageTwoForm({
 
   const onSubmit = async (values: StageTwoValues) => {
     try {
-      const count = await saveNodes({
+      const saved = await saveNodes({
         applicationId: application._id,
         nodes: values.nodes.map((node) => ({
           ipAddress: node.ipAddress,
@@ -81,9 +81,9 @@ export function StageTwoForm({
         })),
       });
       toast.success("Worker nodes saved", {
-        description: `${count} node${count === 1 ? "" : "s"} saved for ${application.applicationName}.`,
+        description: `${saved.length} node${saved.length === 1 ? "" : "s"} saved for ${application.applicationName}.`,
       });
-      onSaved(count);
+      onSaved(saved);
     } catch (error) {
       toast.error("Could not save the worker nodes", {
         description:

@@ -1,14 +1,19 @@
+"use node";
+
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { randomUUID } from "node:crypto";
 import { v } from "convex/values";
 import {
   buildNamespace,
   servicesSchema,
   stageOneSchema,
   workerNodesSchema,
+  type Tenant,
 } from "../lib/onboarding-schema";
-import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { queryRows, withTransaction } from "./pg";
+import { api } from "./_generated/api";
+import { action } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 
 const tenantValidator = v.union(
   v.literal("fund"),
@@ -18,68 +23,26 @@ const tenantValidator = v.union(
 );
 
 /**
- * Every field is validated again on the server with the same zod schemas the
- * browser form uses — the form is only the first line of defence. Returns
- * messages the UI can show verbatim.
+ * Application data lives in Postgres; these Node actions are the API over it.
+ * Every value is validated again with the same zod schemas the browser form
+ * uses — the form is only the first line of defence. Returns messages the UI
+ * can show verbatim.
  */
 function firstIssue(issues: Array<{ message: string }>) {
   return issues[0]?.message ?? "Check the form values and try again.";
 }
 
-async function requireSignedIn(ctx: QueryCtx | MutationCtx) {
+async function requireSignedIn(ctx: ActionCtx) {
   const userId = await getAuthUserId(ctx);
   if (userId === null)
     throw new Error("You must be signed in to save an application.");
   return userId;
 }
 
-async function getApplicationOrThrow(
-  ctx: QueryCtx | MutationCtx,
-  applicationId: Id<"applications">,
-) {
-  const application = await ctx.db.get(applicationId);
-  if (application === null)
-    throw new Error("This application no longer exists.");
-  return application;
-}
-
-async function nodesFor(ctx: QueryCtx | MutationCtx, applicationId: Id<"applications">) {
-  return await ctx.db
-    .query("workerNodes")
-    .withIndex("by_application", (q) => q.eq("applicationId", applicationId))
-    .collect();
-}
-
-async function servicesFor(ctx: QueryCtx | MutationCtx, applicationId: Id<"applications">) {
-  return await ctx.db
-    .query("services")
-    .withIndex("by_application", (q) => q.eq("applicationId", applicationId))
-    .collect();
-}
-
-/** The shape the dashboard list and the wizard share. */
-async function applicationRow(
-  ctx: QueryCtx | MutationCtx,
-  row: Doc<"applications"> | null,
-) {
-  if (row === null) throw new Error("This application no longer exists.");
-  return {
-    _id: row._id,
-    applicationName: row.applicationName,
-    repositoryName: row.repositoryName,
-    tenant: row.tenant,
-    totalWorkerNodes: row.totalWorkerNodes,
-    submittedByName: row.submittedByName,
-    createdAt: row.createdAt,
-    nodeCount: (await nodesFor(ctx, row._id)).length,
-    serviceCount: (await servicesFor(ctx, row._id)).length,
-  };
-}
-
 function parseStageOne(args: {
   applicationName: string;
   repositoryName: string;
-  tenant: "fund" | "lend" | "cs" | "ds";
+  tenant: Tenant;
   totalWorkerNodes: number;
 }) {
   const parsed = stageOneSchema.safeParse({
@@ -92,56 +55,203 @@ function parseStageOne(args: {
   return parsed.data;
 }
 
+/* ------------------------------------------------------------------ rows */
+
+type ApplicationDbRow = {
+  id: string;
+  application_name: string;
+  repository_name: string;
+  tenant: Tenant;
+  total_worker_nodes: number;
+  submitted_by: string;
+  submitted_by_name: string;
+  created_at: number;
+};
+
+type NodeDbRow = {
+  id: string;
+  application_id: string;
+  ip_address: string;
+  hostname: string;
+  joined_cluster: boolean;
+  created_at: number;
+};
+
+type ServiceDbRow = {
+  id: string;
+  application_id: string;
+  namespace: string;
+  service_name: string;
+  port: number;
+  healthcheck_url: string;
+  node_selectors: string[];
+  description: string;
+  created_at: number;
+};
+
+/** The shape the dashboard list and the wizard share. */
+type ApplicationRow = {
+  _id: string;
+  applicationName: string;
+  repositoryName: string;
+  tenant: Tenant;
+  totalWorkerNodes: number;
+  submittedByName: string;
+  createdAt: number;
+  nodeCount: number;
+  serviceCount: number;
+};
+
+function toApplication(
+  row: ApplicationDbRow,
+  nodeCount: number,
+  serviceCount: number,
+): ApplicationRow {
+  return {
+    _id: row.id,
+    applicationName: row.application_name,
+    repositoryName: row.repository_name,
+    tenant: row.tenant,
+    totalWorkerNodes: row.total_worker_nodes,
+    submittedByName: row.submitted_by_name,
+    createdAt: Number(row.created_at),
+    nodeCount,
+    serviceCount,
+  };
+}
+
+function toNode(row: NodeDbRow) {
+  return {
+    _id: row.id,
+    ipAddress: row.ip_address,
+    hostname: row.hostname,
+    joinedCluster: row.joined_cluster,
+  };
+}
+
+function toService(row: ServiceDbRow) {
+  return {
+    _id: row.id,
+    namespace: row.namespace,
+    serviceName: row.service_name,
+    port: row.port,
+    healthcheckUrl: row.healthcheck_url,
+    nodeSelectors: row.node_selectors,
+    description: row.description,
+    createdAt: Number(row.created_at),
+  };
+}
+
+async function requireApplication(
+  applicationId: string,
+): Promise<ApplicationDbRow> {
+  const rows = await queryRows<ApplicationDbRow>(
+    "SELECT * FROM applications WHERE id = $1",
+    [applicationId],
+  );
+  if (rows.length === 0)
+    throw new Error("This application no longer exists.");
+  return rows[0];
+}
+
+async function countsFor(applicationId: string) {
+  const [nodes, services] = await Promise.all([
+    queryRows<{ count: number }>(
+      "SELECT COUNT(*)::int AS count FROM worker_nodes WHERE application_id = $1",
+      [applicationId],
+    ),
+    queryRows<{ count: number }>(
+      "SELECT COUNT(*)::int AS count FROM services WHERE application_id = $1",
+      [applicationId],
+    ),
+  ]);
+  return { nodeCount: nodes[0].count, serviceCount: services[0].count };
+}
+
+/* ------------------------------------------------------------------ api */
+
 /** Saved applications, newest first. Only signed-in users can read them. */
-export const listApplications = query({
+export const listApplications = action({
   args: {},
   handler: async (ctx) => {
-    if ((await getAuthUserId(ctx)) === null) return [];
+    await requireSignedIn(ctx);
 
-    const rows = await ctx.db
-      .query("applications")
-      .withIndex("by_createdAt")
-      .order("desc")
-      .take(100);
+    const applications = await queryRows<ApplicationDbRow>(
+      "SELECT * FROM applications ORDER BY created_at DESC LIMIT 100",
+    );
+    if (applications.length === 0) return [];
 
-    return await Promise.all(rows.map((row) => applicationRow(ctx, row)));
+    const ids = applications.map((row) => row.id);
+    const [nodeCounts, serviceCounts] = await Promise.all([
+      queryRows<{ application_id: string; count: number }>(
+        "SELECT application_id, COUNT(*)::int AS count FROM worker_nodes WHERE application_id = ANY($1::text[]) GROUP BY application_id",
+        [ids],
+      ),
+      queryRows<{ application_id: string; count: number }>(
+        "SELECT application_id, COUNT(*)::int AS count FROM services WHERE application_id = ANY($1::text[]) GROUP BY application_id",
+        [ids],
+      ),
+    ]);
+    const nodes = new Map(nodeCounts.map((row) => [row.application_id, row.count]));
+    const services = new Map(
+      serviceCounts.map((row) => [row.application_id, row.count]),
+    );
+
+    return applications.map((row) =>
+      toApplication(
+        row,
+        nodes.get(row.id) ?? 0,
+        services.get(row.id) ?? 0,
+      ),
+    );
   },
 });
 
 /** Stage 1 — create the application and move on to worker nodes. */
-export const createApplication = mutation({
+export const createApplication = action({
   args: {
     applicationName: v.string(),
     repositoryName: v.string(),
     tenant: tenantValidator,
     totalWorkerNodes: v.number(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ApplicationRow> => {
     const userId = await requireSignedIn(ctx);
     const values = parseStageOne(args);
 
-    const user = await ctx.db.get(userId);
+    // Annotated (and the handler's return type is explicit) so this module's
+    // export types never depend circularly on api, which references them.
+    const user: { name?: string | null; email?: string | null } | null =
+      await ctx.runQuery(api.users.currentUser);
     const submittedByName =
       user?.name?.trim() || user?.email?.trim() || "Platform team";
 
-    const applicationId = await ctx.db.insert("applications", {
-      applicationName: values.applicationName,
-      repositoryName: values.repositoryName,
-      tenant: values.tenant,
-      totalWorkerNodes: Number(values.totalWorkerNodes),
-      submittedBy: userId,
-      submittedByName,
-      createdAt: Date.now(),
-    });
+    const rows = await queryRows<ApplicationDbRow>(
+      `INSERT INTO applications
+         (id, application_name, repository_name, tenant, total_worker_nodes,
+          submitted_by, submitted_by_name, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        randomUUID(),
+        values.applicationName,
+        values.repositoryName,
+        values.tenant,
+        Number(values.totalWorkerNodes),
+        userId,
+        submittedByName,
+        Date.now(),
+      ],
+    );
 
-    return await applicationRow(ctx, await ctx.db.get(applicationId));
+    return toApplication(rows[0], 0, 0);
   },
 });
 
 /** Stage 1 — correct the details of an application already in progress. */
-export const updateApplication = mutation({
+export const updateApplication = action({
   args: {
-    applicationId: v.id("applications"),
+    applicationId: v.string(),
     applicationName: v.string(),
     repositoryName: v.string(),
     tenant: tenantValidator,
@@ -149,36 +259,47 @@ export const updateApplication = mutation({
   },
   handler: async (ctx, args) => {
     await requireSignedIn(ctx);
-    const application = await getApplicationOrThrow(ctx, args.applicationId);
+    const application = await requireApplication(args.applicationId);
     const values = parseStageOne(args);
 
-    const services = await servicesFor(ctx, application._id);
-    if (services.length > 0) {
+    const serviceCounts = await queryRows<{ count: number }>(
+      "SELECT COUNT(*)::int AS count FROM services WHERE application_id = $1",
+      [args.applicationId],
+    );
+    if (serviceCounts[0].count > 0) {
       const fixed =
-        values.applicationName !== application.applicationName ||
+        values.applicationName !== application.application_name ||
         values.tenant !== application.tenant ||
-        Number(values.totalWorkerNodes) !== application.totalWorkerNodes;
+        Number(values.totalWorkerNodes) !== application.total_worker_nodes;
       if (fixed)
         throw new Error(
           "The application name, tenant, and total worker nodes are fixed once services are saved.",
         );
     }
 
-    await ctx.db.patch(application._id, {
-      applicationName: values.applicationName,
-      repositoryName: values.repositoryName,
-      tenant: values.tenant,
-      totalWorkerNodes: Number(values.totalWorkerNodes),
-    });
-
-    return await applicationRow(ctx, await ctx.db.get(application._id));
+    const rows = await queryRows<ApplicationDbRow>(
+      `UPDATE applications
+         SET application_name = $1, repository_name = $2, tenant = $3,
+             total_worker_nodes = $4
+       WHERE id = $5
+       RETURNING *`,
+      [
+        values.applicationName,
+        values.repositoryName,
+        values.tenant,
+        Number(values.totalWorkerNodes),
+        args.applicationId,
+      ],
+    );
+    const counts = await countsFor(args.applicationId);
+    return toApplication(rows[0], counts.nodeCount, counts.serviceCount);
   },
 });
 
 /** Stage 2 — save the worker node list, exactly as many as stage 1 reserved. */
-export const saveWorkerNodes = mutation({
+export const saveWorkerNodes = action({
   args: {
-    applicationId: v.id("applications"),
+    applicationId: v.string(),
     nodes: v.array(
       v.object({
         ipAddress: v.string(),
@@ -189,53 +310,73 @@ export const saveWorkerNodes = mutation({
   },
   handler: async (ctx, args) => {
     await requireSignedIn(ctx);
-    const application = await getApplicationOrThrow(ctx, args.applicationId);
+    const application = await requireApplication(args.applicationId);
 
-    const parsed = workerNodesSchema(application.totalWorkerNodes).safeParse({
+    const parsed = workerNodesSchema(application.total_worker_nodes).safeParse({
       nodes: args.nodes,
     });
     if (!parsed.success) throw new Error(firstIssue(parsed.error.issues));
 
     const hostnames = new Set(parsed.data.nodes.map((node) => node.hostname));
+    const baseTimestamp = Date.now();
 
-    // Saved services keep pointing at real nodes — refuse a change that would
-    // leave one without any selector.
-    const services = await servicesFor(ctx, application._id);
-    for (const service of services) {
-      const kept = service.nodeSelectors.filter((name) => hostnames.has(name));
-      if (service.nodeSelectors.length > 0 && kept.length === 0)
-        throw new Error(
-          "A saved service relies on the current worker nodes. Keep at least one of its nodes in the list.",
+    return await withTransaction(async (client) => {
+      // Saved services keep pointing at real nodes — refuse a change that
+      // would leave one without any selector.
+      const services = await client.query(
+        "SELECT id, node_selectors FROM services WHERE application_id = $1",
+        [args.applicationId],
+      );
+      for (const service of services.rows as Array<{
+        id: string;
+        node_selectors: string[];
+      }>) {
+        const kept = service.node_selectors.filter((name) =>
+          hostnames.has(name),
         );
-    }
-
-    for (const row of await nodesFor(ctx, application._id)) {
-      await ctx.db.delete(row._id);
-    }
-    for (const node of parsed.data.nodes) {
-      await ctx.db.insert("workerNodes", {
-        applicationId: application._id,
-        ipAddress: node.ipAddress,
-        hostname: node.hostname,
-        joinedCluster: node.joinedCluster,
-      });
-    }
-
-    for (const service of services) {
-      const kept = service.nodeSelectors.filter((name) => hostnames.has(name));
-      if (kept.length !== service.nodeSelectors.length) {
-        await ctx.db.patch(service._id, { nodeSelectors: kept });
+        if (service.node_selectors.length > 0 && kept.length === 0)
+          throw new Error(
+            "A saved service relies on the current worker nodes. Keep at least one of its nodes in the list.",
+          );
+        if (kept.length !== service.node_selectors.length) {
+          await client.query("UPDATE services SET node_selectors = $1 WHERE id = $2", [
+            kept,
+            service.id,
+          ]);
+        }
       }
-    }
 
-    return parsed.data.nodes.length;
+      await client.query("DELETE FROM worker_nodes WHERE application_id = $1", [
+        args.applicationId,
+      ]);
+
+      const saved = [];
+      for (const [index, node] of parsed.data.nodes.entries()) {
+        const result = await client.query(
+          `INSERT INTO worker_nodes
+             (id, application_id, ip_address, hostname, joined_cluster, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING *`,
+          [
+            randomUUID(),
+            args.applicationId,
+            node.ipAddress,
+            node.hostname,
+            node.joinedCluster,
+            baseTimestamp + index,
+          ],
+        );
+        saved.push(toNode(result.rows[0] as NodeDbRow));
+      }
+      return saved;
+    });
   },
 });
 
 /** Stage 3 — save the whole service list for an application in one go. */
-export const saveServices = mutation({
+export const saveServices = action({
   args: {
-    applicationId: v.id("applications"),
+    applicationId: v.string(),
     services: v.array(
       v.object({
         namespaceSuffix: v.string(),
@@ -249,16 +390,19 @@ export const saveServices = mutation({
   },
   handler: async (ctx, args) => {
     await requireSignedIn(ctx);
-    const application = await getApplicationOrThrow(ctx, args.applicationId);
+    const application = await requireApplication(args.applicationId);
 
-    const nodes = await nodesFor(ctx, application._id);
-    if (nodes.length !== application.totalWorkerNodes)
+    const nodes = await queryRows<NodeDbRow>(
+      "SELECT * FROM worker_nodes WHERE application_id = $1 ORDER BY created_at ASC, id ASC",
+      [args.applicationId],
+    );
+    if (nodes.length !== application.total_worker_nodes)
       throw new Error(
-        `Save exactly ${application.totalWorkerNodes} worker nodes in stage 2 first.`,
+        `Save exactly ${application.total_worker_nodes} worker nodes in stage 2 first.`,
       );
 
     const parsed = servicesSchema({
-      applicationName: application.applicationName,
+      applicationName: application.application_name,
       tenant: application.tenant,
       nodeHostnames: nodes.map((node) => node.hostname),
     }).safeParse({
@@ -269,60 +413,66 @@ export const saveServices = mutation({
     });
     if (!parsed.success) throw new Error(firstIssue(parsed.error.issues));
 
-    for (const row of await servicesFor(ctx, application._id)) {
-      await ctx.db.delete(row._id);
-    }
-    for (const service of parsed.data.services) {
-      await ctx.db.insert("services", {
-        applicationId: application._id,
-        namespace: buildNamespace(
-          application.applicationName,
-          application.tenant,
-          service.namespaceSuffix,
-        ),
-        serviceName: service.serviceName,
-        port: Number(service.port),
-        healthcheckUrl: service.healthcheckUrl,
-        nodeSelectors: service.nodeSelectors,
-        description: service.description,
-        createdAt: Date.now(),
-      });
-    }
+    const baseTimestamp = Date.now();
 
-    return parsed.data.services.length;
+    return await withTransaction(async (client) => {
+      await client.query("DELETE FROM services WHERE application_id = $1", [
+        args.applicationId,
+      ]);
+
+      const saved = [];
+      for (const [index, service] of parsed.data.services.entries()) {
+        const result = await client.query(
+          `INSERT INTO services
+             (id, application_id, namespace, service_name, port,
+              healthcheck_url, node_selectors, description, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING *`,
+          [
+            randomUUID(),
+            args.applicationId,
+            buildNamespace(
+              application.application_name,
+              application.tenant,
+              service.namespaceSuffix,
+            ),
+            service.serviceName,
+            Number(service.port),
+            service.healthcheckUrl,
+            service.nodeSelectors,
+            service.description,
+            baseTimestamp + index,
+          ],
+        );
+        saved.push(toService(result.rows[0] as ServiceDbRow));
+      }
+      return saved;
+    });
   },
 });
 
 /** The worker nodes saved for one application (stage 2 and 3 both read this). */
-export const getWorkerNodes = query({
-  args: { applicationId: v.id("applications") },
+export const getWorkerNodes = action({
+  args: { applicationId: v.string() },
   handler: async (ctx, args) => {
-    if ((await getAuthUserId(ctx)) === null) return [];
-    const rows = await nodesFor(ctx, args.applicationId);
-    return rows.map((row) => ({
-      _id: row._id,
-      ipAddress: row.ipAddress,
-      hostname: row.hostname,
-      joinedCluster: row.joinedCluster,
-    }));
+    await requireSignedIn(ctx);
+    const rows = await queryRows<NodeDbRow>(
+      "SELECT * FROM worker_nodes WHERE application_id = $1 ORDER BY created_at ASC, id ASC",
+      [args.applicationId],
+    );
+    return rows.map(toNode);
   },
 });
 
 /** The services saved for one application (stage 3 shows and extends these). */
-export const getServices = query({
-  args: { applicationId: v.id("applications") },
+export const getServices = action({
+  args: { applicationId: v.string() },
   handler: async (ctx, args) => {
-    if ((await getAuthUserId(ctx)) === null) return [];
-    const rows = await servicesFor(ctx, args.applicationId);
-    return rows.map((row) => ({
-      _id: row._id,
-      namespace: row.namespace,
-      serviceName: row.serviceName,
-      port: row.port,
-      healthcheckUrl: row.healthcheckUrl,
-      nodeSelectors: row.nodeSelectors,
-      description: row.description,
-      createdAt: row.createdAt,
-    }));
+    await requireSignedIn(ctx);
+    const rows = await queryRows<ServiceDbRow>(
+      "SELECT * FROM services WHERE application_id = $1 ORDER BY created_at ASC, id ASC",
+      [args.applicationId],
+    );
+    return rows.map(toService);
   },
 });

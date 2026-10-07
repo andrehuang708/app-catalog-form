@@ -32,41 +32,9 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // Stage 1 — one row per application being onboarded.
-    applications: defineTable({
-      applicationName: v.string(), // legacy application being migrated
-      repositoryName: v.string(), // container image / source repository
-      tenant: v.union(
-        v.literal("fund"),
-        v.literal("lend"),
-        v.literal("cs"),
-        v.literal("ds"),
-      ), // owning tenant
-      totalWorkerNodes: v.number(), // nodes reserved by stage 1
-      submittedBy: v.id("users"), // who started the onboarding
-      submittedByName: v.string(), // denormalized display name for the list
-      createdAt: v.number(), // when the onboarding was started
-    }).index("by_createdAt", ["createdAt"]),
-
-    // Stage 2 — one row per worker node, exactly totalWorkerNodes per app.
-    workerNodes: defineTable({
-      applicationId: v.id("applications"),
-      ipAddress: v.string(),
-      hostname: v.string(),
-      joinedCluster: v.boolean(), // checked once the node joined the cluster
-    }).index("by_application", ["applicationId"]),
-
-    // Stage 3 — a free-length list of services per application.
-    services: defineTable({
-      applicationId: v.id("applications"),
-      namespace: v.string(), // applicationname-tenant-(freetext)
-      serviceName: v.string(),
-      port: v.number(),
-      healthcheckUrl: v.string(),
-      nodeSelectors: v.array(v.string()), // hostnames chosen from stage 2
-      description: v.string(), // free text
-      createdAt: v.number(),
-    }).index("by_application", ["applicationId"]),
+    // NOTE: The onboarding data (applications, worker nodes, services) was
+    // migrated to PostgreSQL — see src/convex/pg.ts and the actions in
+    // src/convex/onboarding.ts. Convex keeps only auth (users/sessions).
   },
   {
     schemaValidation: false,

@@ -19,7 +19,7 @@ import {
   stageOneSchema,
   type StageOneValues,
 } from "@/lib/onboarding-schema";
-import { useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { useId } from "react";
 import { useForm, type DefaultValues } from "react-hook-form";
@@ -43,8 +43,8 @@ const emptyDefaults: DefaultValues<StageOneValues> = {
  * when one is already selected).
  */
 export function StageOneForm({ application, onSaved }: Props) {
-  const create = useMutation(api.onboarding.createApplication);
-  const update = useMutation(api.onboarding.updateApplication);
+  const create = useAction(api.onboarding.createApplication);
+  const update = useAction(api.onboarding.updateApplication);
   const tenantGroupId = useId();
 
   const form = useForm<StageOneValues>({

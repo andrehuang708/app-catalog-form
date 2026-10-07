@@ -3,23 +3,49 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { TENANT_LABELS } from "@/lib/onboarding-schema";
 import { cn } from "@/lib/utils";
-import { useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { format } from "date-fns";
 import { Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { statusOf, type ApplicationRow } from "./types";
 
 type Props = {
-  selectedId: ApplicationRow["_id"] | null;
+  selectedId: string | null;
   onSelect: (application: ApplicationRow | null) => void;
+  /** Bumped by the dashboard after every save so the list refetches. */
+  refreshToken: number;
 };
 
 /**
- * Saved applications — click a row to resume its onboarding at the first
- * incomplete stage. Rows use hairline dividers instead of a table so long
- * repository names stay readable in the narrow column.
+ * Saved applications from Postgres — click a row to resume its onboarding at
+ * the first incomplete stage. Rows use hairline dividers instead of a table so
+ * long repository names stay readable in the narrow column.
  */
-export function ApplicationList({ selectedId, onSelect }: Props) {
-  const applications = useQuery(api.onboarding.listApplications);
+export function ApplicationList({ selectedId, onSelect, refreshToken }: Props) {
+  const listApplications = useAction(api.onboarding.listApplications);
+  const [applications, setApplications] = useState<
+    ApplicationRow[] | undefined
+  >(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    listApplications()
+      .then((rows) => {
+        if (!cancelled) setApplications(rows);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setApplications([]);
+        toast.error("Could not load applications", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listApplications, refreshToken]);
 
   return (
     <div>
@@ -69,7 +95,10 @@ export function ApplicationList({ selectedId, onSelect }: Props) {
           {applications.map((application) => {
             const status = statusOf(application);
             return (
-              <li key={application._id} className="border-border/70 border-b last:border-b-0">
+              <li
+                key={application._id}
+                className="border-border/70 border-b last:border-b-0"
+              >
                 <button
                   type="button"
                   onClick={() => onSelect(application)}

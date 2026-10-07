@@ -1,12 +1,14 @@
-import type { Id } from "@/convex/_generated/dataModel";
 import type { Tenant } from "@/lib/onboarding-schema";
 
 /** The three onboarding stages. */
 export type Stage = 1 | 2 | 3;
 
-/** One saved application, as shared by the list query and the wizard. */
+/**
+ * One saved application, as returned by the Postgres-backed actions — ids are
+ * plain strings (uuid) now that the data no longer lives in Convex tables.
+ */
 export type ApplicationRow = {
-  _id: Id<"applications">;
+  _id: string;
   applicationName: string;
   repositoryName: string;
   tenant: Tenant;
@@ -19,7 +21,7 @@ export type ApplicationRow = {
 
 /** One worker node saved in stage 2. */
 export type WorkerNodeRow = {
-  _id: Id<"workerNodes">;
+  _id: string;
   ipAddress: string;
   hostname: string;
   joinedCluster: boolean;
@@ -27,7 +29,7 @@ export type WorkerNodeRow = {
 
 /** One service saved in stage 3. */
 export type ServiceRow = {
-  _id: Id<"services">;
+  _id: string;
   namespace: string;
   serviceName: string;
   port: number;

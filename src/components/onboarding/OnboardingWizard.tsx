@@ -1,13 +1,19 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { Check, Lock } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { StageOneForm } from "./StageOneForm";
 import { StageThreeForm } from "./StageThreeForm";
 import { StageTwoForm } from "./StageTwoForm";
-import type { ApplicationRow, Stage } from "./types";
+import type {
+  ApplicationRow,
+  ServiceRow,
+  Stage,
+  WorkerNodeRow,
+} from "./types";
 
 const STEPS: Array<{ stage: Stage; label: string }> = [
   { stage: 1, label: "Application details" },
@@ -43,7 +49,9 @@ function StageSkeleton() {
 /**
  * Onboarding runs in three stages — application details, worker nodes, then
  * services. The component is keyed by application id (or "new") so switching
- * applications resets the flow to the right stage.
+ * applications resets the flow to the right stage. Node and service rows are
+ * fetched from Postgres on mount (and re-fetched whenever the application
+ * changes) instead of streaming through Convex subscriptions.
  */
 export function OnboardingWizard({ application, onApplicationChange }: Props) {
   const [stage, setStage] = useState<Stage>(() =>
@@ -53,14 +61,44 @@ export function OnboardingWizard({ application, onApplicationChange }: Props) {
     initialStageFor(application),
   );
 
-  const nodes = useQuery(
-    api.onboarding.getWorkerNodes,
-    application ? { applicationId: application._id } : "skip",
+  const fetchNodes = useAction(api.onboarding.getWorkerNodes);
+  const fetchServices = useAction(api.onboarding.getServices);
+  const [nodes, setNodes] = useState<WorkerNodeRow[] | undefined>(undefined);
+  const [services, setServices] = useState<ServiceRow[] | undefined>(
+    undefined,
   );
-  const services = useQuery(
-    api.onboarding.getServices,
-    application ? { applicationId: application._id } : "skip",
-  );
+
+  useEffect(() => {
+    if (!application) return;
+    let cancelled = false;
+    fetchNodes({ applicationId: application._id })
+      .then((rows) => {
+        if (!cancelled) setNodes(rows);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setNodes([]);
+        toast.error("Could not load the worker nodes", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      });
+    fetchServices({ applicationId: application._id })
+      .then((rows) => {
+        if (!cancelled) setServices(rows);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setServices([]);
+        toast.error("Could not load the services", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [application, fetchNodes, fetchServices]);
 
   const serviceCount = application?.serviceCount ?? 0;
   const servicesLocked = serviceCount > 0;
@@ -83,14 +121,24 @@ export function OnboardingWizard({ application, onApplicationChange }: Props) {
     setMaxStage((current) => (current < 2 ? 2 : current));
   };
 
-  const handleStageTwoSaved = (nodeCount: number) => {
-    if (application) onApplicationChange({ ...application, nodeCount });
+  const handleStageTwoSaved = (savedNodes: WorkerNodeRow[]) => {
+    setNodes(savedNodes);
+    if (application)
+      onApplicationChange({
+        ...application,
+        nodeCount: savedNodes.length,
+      });
     setStage(3);
     setMaxStage((current) => (current < 3 ? 3 : current));
   };
 
-  const handleStageThreeSaved = (serviceCount: number) => {
-    if (application) onApplicationChange({ ...application, serviceCount });
+  const handleStageThreeSaved = (savedServices: ServiceRow[]) => {
+    setServices(savedServices);
+    if (application)
+      onApplicationChange({
+        ...application,
+        serviceCount: savedServices.length,
+      });
   };
 
   return (
@@ -101,7 +149,10 @@ export function OnboardingWizard({ application, onApplicationChange }: Props) {
           const complete = done[step.stage];
           const locked = !canVisit(step.stage);
           return (
-            <li key={step.stage} className="border-border/70 border-l first:border-l-0">
+            <li
+              key={step.stage}
+              className="border-border/70 border-l first:border-l-0"
+            >
               <button
                 type="button"
                 disabled={locked}
@@ -140,7 +191,10 @@ export function OnboardingWizard({ application, onApplicationChange }: Props) {
 
       <div className="mt-8">
         {stage === 1 && (
-          <StageOneForm application={application} onSaved={handleStageOneSaved} />
+          <StageOneForm
+            application={application}
+            onSaved={handleStageOneSaved}
+          />
         )}
 
         {stage === 2 &&

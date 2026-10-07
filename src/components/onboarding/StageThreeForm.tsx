@@ -3,7 +3,7 @@ import { ArrowUpRight, Loader2, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -36,7 +36,7 @@ type Props = {
   savedServices: ServiceRow[];
   /** Omitted while saved services lock the worker node list. */
   onBack?: () => void;
-  onSaved: (serviceCount: number) => void;
+  onSaved: (savedServices: ServiceRow[]) => void;
 };
 
 function Detail({
@@ -71,7 +71,7 @@ export function StageThreeForm({
   onBack,
   onSaved,
 }: Props) {
-  const saveServices = useMutation(api.onboarding.saveServices);
+  const saveServices = useAction(api.onboarding.saveServices);
   const [draft, setDraft] = useState<ServiceFormValues[]>([]);
 
   const context: ServiceContext = {
@@ -145,7 +145,7 @@ export function StageThreeForm({
 
   const onSave = async () => {
     try {
-      const count = await saveServices({
+      const saved = await saveServices({
         applicationId: application._id,
         services: combined.map((service) => ({
           namespaceSuffix: service.namespaceSuffix,
@@ -158,9 +158,9 @@ export function StageThreeForm({
       });
       setDraft([]);
       toast.success("Services saved", {
-        description: `${count} service${count === 1 ? "" : "s"} saved for ${application.applicationName}.`,
+        description: `${saved.length} service${saved.length === 1 ? "" : "s"} saved for ${application.applicationName}.`,
       });
-      onSaved(count);
+      onSaved(saved);
     } catch (error) {
       toast.error("Could not save the services", {
         description:
