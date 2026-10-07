@@ -30,29 +30,51 @@ describe("landing page", () => {
     expect(html).toContain("Open the form");
     expect(html).toContain("Form preview");
     expect(html).toContain("What the form collects");
-    expect(html).toContain("Complete the form");
+    expect(html).toContain("Work through three stages");
     expect(html).toContain("Saved for the team");
     expect(html).toContain("Onboard your first application");
   });
 
-  it("lists all six form fields", () => {
+  it("describes all three stages with their fields", () => {
+    expect(html).toContain("3 stages");
+    for (const heading of [
+      "Stage 1 · Application details",
+      "Stage 2 · Worker nodes",
+      "Stage 3 · Services",
+    ]) {
+      expect(html).toContain(heading);
+    }
     for (const field of [
+      // stage 1
       "Application name",
-      "Namespace",
-      "Total requested worker nodes",
-      "Port network",
       "Repository name",
+      "Tenant",
+      "Total worker nodes",
+      // stage 2
+      "IP address",
+      "Hostname",
+      "Joined cluster",
+      // stage 3
+      "Namespace",
+      "Service name",
+      "Port",
       "Health check URL",
+      "Node selector",
+      "Description",
     ]) {
       expect(html).toContain(field);
     }
   });
 
-  it("no longer shows the old catalog wording", () => {
+  it("no longer shows the old single-form wording", () => {
     expect(html).not.toContain("Service Catalog");
     expect(html).not.toContain("Open the service catalog");
     expect(html).not.toContain("What version 1 collects");
     expect(html).not.toContain("File your first intake");
+    expect(html).not.toContain("Port network");
+    expect(html).not.toContain("Total requested worker nodes");
+    expect(html).not.toContain("Complete the form");
+    expect(html).not.toContain("6 fields");
   });
 });
 
@@ -68,16 +90,36 @@ describe("dashboard page", () => {
   it("carries the product name and new headings", () => {
     expect(html).toContain("Kube App Onboarding Form");
     expect(html).toContain("Legacy application onboarding");
-    expect(html).toContain("New application");
+    expect(html).toContain("Onboarding");
     expect(html).toContain("Saved applications");
     expect(html).toContain("internal platform tool");
   });
 
-  it("uses the save flow wording", () => {
-    expect(html).toContain("Save application");
-    expect(html).toContain(
-      "Six fields describing how the application should run on",
-    );
+  it("starts on stage 1 with the three-stage stepper", () => {
+    for (const label of [
+      "Stage 1",
+      "Stage 2",
+      "Stage 3",
+      "Application details",
+      "Worker nodes",
+      "Services",
+    ]) {
+      expect(html).toContain(label);
+    }
+    for (const label of [
+      "Application name",
+      "Repository name",
+      "Tenant",
+      "Total worker nodes",
+      "Fund",
+      "Lend",
+      "CS",
+      "DS",
+    ]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain("Save and continue");
+    expect(html).toContain("Three stages — application details");
   });
 
   it("no longer shows the old wording", () => {
@@ -85,6 +127,10 @@ describe("dashboard page", () => {
     expect(html).not.toContain("Add to catalog");
     expect(html).not.toContain("New submission");
     expect(html).not.toContain("Service Catalog");
+    expect(html).not.toContain("New application");
+    expect(html).not.toContain("Port network");
+    expect(html).not.toContain("Health check URL");
+    expect(html).not.toContain("Six fields describing");
   });
 });
 

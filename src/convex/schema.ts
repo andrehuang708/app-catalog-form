@@ -32,18 +32,41 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // One row per onboarding intake submitted by the platform team.
-    serviceCatalog: defineTable({
+    // Stage 1 — one row per application being onboarded.
+    applications: defineTable({
       applicationName: v.string(), // legacy application being migrated
-      namespace: v.string(), // kubernetes namespace it will run in
-      totalRequestedWorkerNodes: v.number(), // worker nodes requested
-      portNetwork: v.number(), // network port exposed by the service
       repositoryName: v.string(), // container image / source repository
-      healthcheckUrl: v.string(), // endpoint kubernetes should probe
-      submittedBy: v.id("users"), // who filed the intake
+      tenant: v.union(
+        v.literal("fund"),
+        v.literal("lend"),
+        v.literal("cs"),
+        v.literal("ds"),
+      ), // owning tenant
+      totalWorkerNodes: v.number(), // nodes reserved by stage 1
+      submittedBy: v.id("users"), // who started the onboarding
       submittedByName: v.string(), // denormalized display name for the list
-      createdAt: v.number(), // when the intake was filed
+      createdAt: v.number(), // when the onboarding was started
     }).index("by_createdAt", ["createdAt"]),
+
+    // Stage 2 — one row per worker node, exactly totalWorkerNodes per app.
+    workerNodes: defineTable({
+      applicationId: v.id("applications"),
+      ipAddress: v.string(),
+      hostname: v.string(),
+      joinedCluster: v.boolean(), // checked once the node joined the cluster
+    }).index("by_application", ["applicationId"]),
+
+    // Stage 3 — a free-length list of services per application.
+    services: defineTable({
+      applicationId: v.id("applications"),
+      namespace: v.string(), // applicationname-tenant-(freetext)
+      serviceName: v.string(),
+      port: v.number(),
+      healthcheckUrl: v.string(),
+      nodeSelectors: v.array(v.string()), // hostnames chosen from stage 2
+      description: v.string(), // free text
+      createdAt: v.number(),
+    }).index("by_application", ["applicationId"]),
   },
   {
     schemaValidation: false,

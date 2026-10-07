@@ -11,47 +11,109 @@ const reveal = {
   transition: { duration: 0.55, ease: "easeOut" },
 } as const;
 
-/** The six fields, mirroring the real form one-to-one. */
-const FIELDS: Array<{ name: string; description: string }> = [
+/** The three onboarding stages, mirroring the real form one-to-one. */
+const STAGE_GROUPS: Array<{
+  stage: string;
+  title: string;
+  fields: Array<{ name: string; description: string }>;
+}> = [
   {
-    name: "Application name",
-    description:
-      "The legacy application you are onboarding, and the name it is listed under.",
+    stage: "Stage 1",
+    title: "Application details",
+    fields: [
+      {
+        name: "Application name",
+        description:
+          "The legacy application you are onboarding, and the name it is listed under.",
+      },
+      {
+        name: "Repository name",
+        description:
+          "The container image or source repository the deployment is built from.",
+      },
+      {
+        name: "Tenant",
+        description:
+          "Which team owns the workload — fund, lend, cs, or ds.",
+      },
+      {
+        name: "Total worker nodes",
+        description:
+          "How many nodes to reserve; stage 2 must list exactly this many.",
+      },
+    ],
   },
   {
-    name: "Namespace",
-    description:
-      "The Kubernetes namespace the application will run in, validated as a DNS label before it is saved.",
+    stage: "Stage 2",
+    title: "Worker nodes",
+    fields: [
+      {
+        name: "IP address",
+        description:
+          "The node's address in the cluster network, checked as a valid IPv4 address.",
+      },
+      {
+        name: "Hostname",
+        description:
+          "The node's name as Kubernetes will know it — lowercase letters, numbers, dots, and hyphens.",
+      },
+      {
+        name: "Joined cluster",
+        description:
+          "A single check confirming the node has already joined the cluster.",
+      },
+    ],
   },
   {
-    name: "Total requested worker nodes",
-    description:
-      "How many worker nodes the platform team should reserve for the workload.",
-  },
-  {
-    name: "Port network",
-    description:
-      "The network port the service exposes, checked against the valid 1–65535 range.",
-  },
-  {
-    name: "Repository name",
-    description:
-      "The container image or source repository the deployment is built from.",
-  },
-  {
-    name: "Health check URL",
-    description:
-      "The endpoint Kubernetes will probe to decide whether the service is healthy.",
+    stage: "Stage 3",
+    title: "Services",
+    fields: [
+      {
+        name: "Namespace",
+        description:
+          "Built as applicationname-tenant-(free text), so every service lands in the right place.",
+      },
+      {
+        name: "Service name",
+        description:
+          "The Kubernetes service name, validated as a DNS label before it is saved.",
+      },
+      {
+        name: "Port",
+        description:
+          "The port the service exposes, checked against the valid 1–65535 range.",
+      },
+      {
+        name: "Health check URL",
+        description:
+          "The endpoint Kubernetes will probe to decide whether the service is healthy.",
+      },
+      {
+        name: "Node selector",
+        description:
+          "Chosen from the stage 2 worker nodes, so the service is scheduled where it should run.",
+      },
+      {
+        name: "Description",
+        description: "Free text, so the whole team knows what the service does.",
+      },
+    ],
   },
 ];
 
 const SPEC_ROWS: Array<{ label: string; value: string }> = [
-  { label: "Application name", value: "billing-api" },
-  { label: "Namespace", value: "payments" },
-  { label: "Total requested worker nodes", value: "3" },
-  { label: "Port network", value: "8080" },
-  { label: "Repository name", value: "platform/billing-api" },
-  { label: "Health check URL", value: "https://billing.internal/healthz" },
+  {
+    label: "Stage 1 · Application details",
+    value: "Name · Repository · Tenant · Nodes",
+  },
+  {
+    label: "Stage 2 · Worker nodes",
+    value: "IP · Hostname · Joined cluster",
+  },
+  {
+    label: "Stage 3 · Services",
+    value: "Namespace · Port · Health check · Node selector",
+  },
 ];
 
 const STEPS: Array<{ number: string; title: string; body: string }> = [
@@ -62,13 +124,13 @@ const STEPS: Array<{ number: string; title: string; body: string }> = [
   },
   {
     number: "02",
-    title: "Complete the form",
-    body: "Six fields, no tickets and no hand-offs. Each one is checked before it can be saved.",
+    title: "Work through three stages",
+    body: "Application details first, then the worker node list, then as many services as the application needs — each stage checked before it is saved.",
   },
   {
     number: "03",
     title: "Saved for the team",
-    body: "The application appears instantly in the shared list, with who saved it and when.",
+    body: "Every application appears in the shared list with its status, ready to finish any time.",
   },
 ];
 
@@ -120,9 +182,10 @@ export default function Landing() {
             </h1>
             <p className="text-muted-foreground mt-6 max-w-xl text-base leading-7">
               Kube App Onboarding Form collects what your platform team needs to
-              migrate a legacy application — namespace, worker nodes, port,
-              repository, health check — and keeps every saved entry in one
-              clean, ordered list.
+              migrate a legacy application — application details and tenant,
+              the worker node list, then every service with its namespace,
+              port, health check, and node selector — and keeps every saved
+              entry in one clean, ordered list.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
@@ -145,7 +208,7 @@ export default function Landing() {
                 Form preview
               </span>
               <span className="text-muted-foreground text-[11px]">
-                6 fields
+                3 stages
               </span>
             </div>
             <dl className="divide-border/70 divide-y">
@@ -170,24 +233,37 @@ export default function Landing() {
                 What the form collects
               </h2>
               <p className="text-muted-foreground mt-3 text-sm leading-6">
-                Six fields, and nothing else. The form stays deliberately narrow
-                so a legacy application can be onboarded in under a minute.
+                Three stages, and nothing else. Application details first, the
+                worker nodes they reserve, then the services — every value
+                checked before it can be saved.
               </p>
             </motion.div>
 
-            <motion.dl {...reveal} className="border-border/70 border-t">
-              {FIELDS.map((field) => (
+            <motion.div {...reveal} className="border-border/70 border-t">
+              {STAGE_GROUPS.map((group) => (
                 <div
-                  key={field.name}
-                  className="border-border/70 grid gap-1.5 border-b py-5 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-6"
+                  key={group.stage}
+                  className="border-border/70 border-b py-7"
                 >
-                  <dt className="text-sm font-medium">{field.name}</dt>
-                  <dd className="text-muted-foreground text-sm leading-6">
-                    {field.description}
-                  </dd>
+                  <div className="flex items-baseline gap-3">
+                    <p className="text-muted-foreground text-[11px] font-medium tracking-[0.2em] uppercase">
+                      {group.stage}
+                    </p>
+                    <h3 className="text-sm font-medium">{group.title}</h3>
+                  </div>
+                  <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+                    {group.fields.map((field) => (
+                      <div key={field.name}>
+                        <dt className="text-sm font-medium">{field.name}</dt>
+                        <dd className="text-muted-foreground mt-1 text-sm leading-6">
+                          {field.description}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
               ))}
-            </motion.dl>
+            </motion.div>
           </div>
         </section>
 
@@ -235,9 +311,9 @@ export default function Landing() {
               Onboard your first application
             </h2>
             <p className="text-muted-foreground mt-3 max-w-xl text-sm leading-6">
-              Save a legacy application to the onboarding list in under a
-              minute. Everyone on the platform team sees it the moment it is
-              saved.
+              Start an application, list its worker nodes, add its services —
+              finish in one sitting or resume any time. Everyone on the
+              platform team sees it the moment it is saved.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
