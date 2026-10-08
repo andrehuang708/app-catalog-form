@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -40,8 +41,10 @@ type Props<T> = {
   emptyMessage?: string;
   isLoading?: boolean;
   initialSort?: SortState;
-  /** Cap rendered rows after filtering (the dashboard’s “recent” list). */
+  /** Cap rows after filtering (the dashboard’s “recent” list). */
   maxRows?: number;
+  /** Rows per page — pagination appears only when there is more than one. */
+  pageSize?: number;
 };
 
 function compare(a: string | number, b: string | number): number {
@@ -54,8 +57,13 @@ function compare(a: string | number, b: string | number): number {
 
 /**
  * The one table every admin page shares: free-text search across all
- * columns, click-to-sort headers, a loading skeleton, an empty state, and
- * horizontal overflow so it stays usable on narrow screens.
+ * columns, click-to-sort headers, pagination for large lists, a loading
+ * skeleton, an empty state, and horizontal overflow so it stays usable on
+ * narrow screens.
+ *
+ * The current page is clamped while rendering (`min(page, pageCount)`) so
+ * shrinking result sets — a new search, a sort — never land on a page that
+ * no longer exists, without an effect to reset state.
  */
 export function DataTable<T>({
   columns,
@@ -67,9 +75,11 @@ export function DataTable<T>({
   isLoading = false,
   initialSort = null,
   maxRows,
+  pageSize = 10,
 }: Props<T>) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortState>(initialSort);
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -91,9 +101,14 @@ export function DataTable<T>({
     );
   }, [filtered, sort, columns]);
 
-  const visible = maxRows ? sorted.slice(0, maxRows) : sorted;
+  const capped = maxRows ? sorted.slice(0, maxRows) : sorted;
+  const pageCount = Math.max(1, Math.ceil(capped.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const startIndex = (currentPage - 1) * pageSize;
+  const pageRows = capped.slice(startIndex, startIndex + pageSize);
 
-  const toggleSort = (id: string) =>
+  const toggleSort = (id: string) => {
+    setPage(1);
     setSort((current) =>
       current?.id === id
         ? current.direction === "asc"
@@ -101,6 +116,25 @@ export function DataTable<T>({
           : null
         : { id, direction: "asc" },
     );
+  };
+
+  const handleSearch = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+
+  const range =
+    capped.length === 0
+      ? ""
+      : `${startIndex + 1}–${startIndex + pageRows.length}`;
+  const matchNote =
+    filtered.length !== rows.length
+      ? ` · ${filtered.length} of ${rows.length} rows match “${query.trim()}”`
+      : "";
+  const summary =
+    pageCount > 1
+      ? `${range} of ${capped.length} rows${matchNote}`
+      : `${capped.length} row${capped.length === 1 ? "" : "s"}${matchNote}`;
 
   return (
     <div className="flex flex-col gap-3">
@@ -109,7 +143,7 @@ export function DataTable<T>({
           <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => handleSearch(event.target.value)}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
             className="pl-9"
@@ -179,7 +213,7 @@ export function DataTable<T>({
                   ))}
                 </TableRow>
               ))
-            ) : visible.length === 0 ? (
+            ) : capped.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
@@ -189,7 +223,7 @@ export function DataTable<T>({
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((row) => (
+              pageRows.map((row) => (
                 <TableRow key={rowKey(row)}>
                   {columns.map((column) => (
                     <TableCell
@@ -211,12 +245,37 @@ export function DataTable<T>({
         </Table>
       </div>
 
-      {!isLoading && rows.length > 0 && (
-        <p className="text-muted-foreground text-xs">
-          {filtered.length === rows.length
-            ? `${rows.length} row${rows.length === 1 ? "" : "s"}`
-            : `${filtered.length} of ${rows.length} rows match “${query.trim()}”`}
-        </p>
+      {!isLoading && capped.length > 0 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground text-xs">{summary}</p>
+          {pageCount > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label="Previous page"
+                disabled={currentPage === 1}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                Page {currentPage} of {pageCount}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label="Next page"
+                disabled={currentPage === pageCount}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
