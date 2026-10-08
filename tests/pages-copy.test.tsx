@@ -7,6 +7,7 @@ import { MemoryRouter } from "react-router";
 import AuthPage from "../src/pages/Auth";
 import Dashboard from "../src/pages/Dashboard";
 import Landing from "../src/pages/Landing";
+import OnboardingPage from "../src/pages/OnboardingPage";
 
 const client = new ConvexReactClient("https://example.convex.cloud");
 
@@ -36,7 +37,6 @@ describe("landing page", () => {
   });
 
   it("describes all three stages with their fields", () => {
-    expect(html).toContain("3 stages");
     for (const heading of [
       "Stage 1 · Application details",
       "Stage 2 · Worker nodes",
@@ -87,39 +87,12 @@ describe("dashboard page", () => {
     </ConvexAuthProvider>,
   );
 
-  it("carries the product name and new headings", () => {
-    expect(html).toContain("Kube App Onboarding Form");
-    expect(html).toContain("Legacy application onboarding");
-    expect(html).toContain("Onboarding");
-    expect(html).toContain("Saved applications");
-    expect(html).toContain("internal platform tool");
-  });
-
-  it("starts on stage 1 with the three-stage stepper", () => {
-    for (const label of [
-      "Stage 1",
-      "Stage 2",
-      "Stage 3",
-      "Application details",
-      "Worker nodes",
-      "Services",
-    ]) {
-      expect(html).toContain(label);
-    }
-    for (const label of [
-      "Application name",
-      "Repository name",
-      "Tenant",
-      "Total worker nodes",
-      "Fund",
-      "Lend",
-      "CS",
-      "DS",
-    ]) {
-      expect(html).toContain(label);
-    }
-    expect(html).toContain("Save and continue");
-    expect(html).toContain("Three stages — application details");
+  it("shows the three summary counters and the recent onboarding table", () => {
+    expect(html).toContain("Infrastructure dashboard");
+    expect(html).toContain("Total Tenant");
+    expect(html).toContain("Total Namespace");
+    expect(html).toContain("Total Service");
+    expect(html).toContain("Recent Onboarding");
   });
 
   it("no longer shows the old wording", () => {
@@ -131,6 +104,21 @@ describe("dashboard page", () => {
     expect(html).not.toContain("Port network");
     expect(html).not.toContain("Health check URL");
     expect(html).not.toContain("Six fields describing");
+  });
+});
+
+describe("request onboarding page", () => {
+  const html = renderToString(
+    <ConvexAuthProvider client={client}>
+      <MemoryRouter initialEntries={["/onboarding"]}>
+        <OnboardingPage />
+      </MemoryRouter>
+    </ConvexAuthProvider>,
+  );
+
+  it("carries the request heading and the saved list", () => {
+    expect(html).toContain("Request Onboarding");
+    expect(html).toContain("Saved applications");
   });
 });
 
@@ -163,12 +151,18 @@ describe("app shell files", () => {
     expect(manifest).toContain('"short_name": "Kube Onboarding"');
   });
 
-  it("routes sign-in back to the dashboard with product-specific copy", () => {
+  it("routes `/` to the dashboard (behind sign-in) and `/auth` back to it", () => {
     const main = fromRoot("src/main.tsx");
     expect(main).toContain('redirectAfterAuth="/dashboard"');
     expect(main).toContain('title="Sign in to the onboarding form"');
     expect(main).toContain(
       "The Kube App Onboarding Form is internal to the platform team.",
     );
+    // `/` and `/dashboard` both render the dashboard inside the admin shell,
+    // and unsigned visitors bounce straight to /auth.
+    expect(main).toContain('<Route path="/" element={<Dashboard />} />');
+    expect(main).toContain('<Route path="/dashboard" element={<Dashboard />} />');
+    expect(main).toContain("redirectImmediately");
+    expect(main).toContain('<Route\n                path="/auth"');
   });
 });

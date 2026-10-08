@@ -1,6 +1,7 @@
 import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { AdminLayout } from "@/components/admin/AdminLayout";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -10,9 +11,14 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 // Lazy load route components for better code splitting
-const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const OnboardingPage = lazy(() => import("./pages/OnboardingPage.tsx"));
+const ApplicationsPage = lazy(() => import("./pages/ApplicationsPage.tsx"));
+const NamespacesPage = lazy(() => import("./pages/NamespacesPage.tsx"));
+const ServicesPage = lazy(() => import("./pages/ServicesPage.tsx"));
+const WorkerNodesPage = lazy(() => import("./pages/WorkerNodesPage.tsx"));
+const TenantsPage = lazy(() => import("./pages/TenantsPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -116,22 +122,34 @@ createRoot(document.getElementById("root")!).render(
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route path="/" element={<Landing />} />
               <Route
                 path="/auth"
                 element={<AuthPage redirectAfterAuth="/dashboard" />}
               />
+              {/* Admin Panel: one signed-in shell (sidebar + top bar) around
+                  every management page. `/` and `/dashboard` are both the
+                  dashboard; unsigned visitors bounce straight to /auth with a
+                  returnTo so login lands them back where they asked for. */}
               <Route
-                path="/dashboard"
                 element={
                   <RequireAuth
                     title="Sign in to the onboarding form"
                     description="The Kube App Onboarding Form is internal to the platform team."
+                    redirectImmediately
                   >
-                    <Dashboard />
+                    <AdminLayout />
                   </RequireAuth>
                 }
-              />
+              >
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/onboarding" element={<OnboardingPage />} />
+                <Route path="/applications" element={<ApplicationsPage />} />
+                <Route path="/namespaces" element={<NamespacesPage />} />
+                <Route path="/services" element={<ServicesPage />} />
+                <Route path="/worker-nodes" element={<WorkerNodesPage />} />
+                <Route path="/tenants" element={<TenantsPage />} />
+              </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

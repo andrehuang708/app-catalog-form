@@ -6,7 +6,7 @@ import { v } from "convex/values";
 import {
   buildNamespace,
   servicesSchema,
-  stageOneSchema,
+  stageOneSchemaFor,
   workerNodesSchema,
   type Tenant,
 } from "../lib/onboarding-schema";
@@ -15,12 +15,9 @@ import { api } from "./_generated/api";
 import { action } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 
-const tenantValidator = v.union(
-  v.literal("fund"),
-  v.literal("lend"),
-  v.literal("cs"),
-  v.literal("ds"),
-);
+// Tenants are rows in the `tenants` table (the DDL seeds the original four);
+// membership is checked against them inside parseStageOne.
+const tenantValidator = v.string();
 
 /**
  * Application data lives in Postgres; these Node actions are the API over it.
@@ -39,13 +36,16 @@ async function requireSignedIn(ctx: ActionCtx) {
   return userId;
 }
 
-function parseStageOne(args: {
-  applicationName: string;
-  repositoryName: string;
-  tenant: Tenant;
-  totalWorkerNodes: number;
-}) {
-  const parsed = stageOneSchema.safeParse({
+function parseStageOne(
+  args: {
+    applicationName: string;
+    repositoryName: string;
+    tenant: Tenant;
+    totalWorkerNodes: number;
+  },
+  tenantNames: string[],
+) {
+  const parsed = stageOneSchemaFor(tenantNames).safeParse({
     applicationName: args.applicationName,
     repositoryName: args.repositoryName,
     tenant: args.tenant,
@@ -154,6 +154,14 @@ async function requireApplication(
   return rows[0];
 }
 
+/** Every tenant name on record — stage 1 may only pick one of these. */
+async function tenantNames(): Promise<string[]> {
+  const rows = await queryRows<{ name: string }>(
+    "SELECT name FROM tenants ORDER BY name",
+  );
+  return rows.map((row) => row.name);
+}
+
 async function countsFor(applicationId: string) {
   const [nodes, services] = await Promise.all([
     queryRows<{ count: number }>(
@@ -217,7 +225,7 @@ export const createApplication = action({
   },
   handler: async (ctx, args): Promise<ApplicationRow> => {
     const userId = await requireSignedIn(ctx);
-    const values = parseStageOne(args);
+    const values = parseStageOne(args, await tenantNames());
 
     // Annotated (and the handler's return type is explicit) so this module's
     // export types never depend circularly on api, which references them.
@@ -260,7 +268,7 @@ export const updateApplication = action({
   handler: async (ctx, args) => {
     await requireSignedIn(ctx);
     const application = await requireApplication(args.applicationId);
-    const values = parseStageOne(args);
+    const values = parseStageOne(args, await tenantNames());
 
     const serviceCounts = await queryRows<{ count: number }>(
       "SELECT COUNT(*)::int AS count FROM services WHERE application_id = $1",
@@ -474,5 +482,161 @@ export const getServices = action({
       [args.applicationId],
     );
     return rows.map(toService);
+  },
+});
+
+/* ---------------------------------------------------- dashboard & tables */
+
+/** Every tenant with its application count (Tenant page + stage 1 radios). */
+export const listTenants = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireSignedIn(ctx);
+    const rows = await queryRows<{
+      name: string;
+      created_at: number;
+      applications: number;
+    }>(
+      `SELECT t.name, t.created_at, COUNT(a.id)::int AS applications
+         FROM tenants t
+         LEFT JOIN applications a ON a.tenant = t.name
+        GROUP BY t.name, t.created_at
+        ORDER BY t.name`,
+    );
+    return rows.map((row) => ({
+      _id: row.name,
+      name: row.name,
+      createdAt: Number(row.created_at),
+      applications: row.applications,
+    }));
+  },
+});
+
+/** Adds a tenant to the shared list (Tenant page → "Add New Tenant"). */
+export const addTenant = action({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    await requireSignedIn(ctx);
+    const name = args.name.trim().toLowerCase();
+    if (!/^[a-z0-9]([-a-z0-9]{0,28}[a-z0-9])?$/.test(name))
+      throw new Error(
+        "Use lowercase letters, numbers, and hyphens — 30 characters or fewer.",
+      );
+    const existing = await queryRows<{ name: string }>(
+      "SELECT name FROM tenants WHERE name = $1",
+      [name],
+    );
+    if (existing.length > 0) throw new Error("That tenant already exists.");
+
+    const rows = await queryRows<{ id: string; name: string; created_at: number }>(
+      "INSERT INTO tenants (id, name, created_at) VALUES ($1, $2, $3) RETURNING *",
+      [randomUUID(), name, Date.now()],
+    );
+    return {
+      _id: rows[0].id,
+      name: rows[0].name,
+      createdAt: Number(rows[0].created_at),
+      applications: 0,
+    };
+  },
+});
+
+/** Distinct namespaces across all applications, with usage counts. */
+export const listNamespaces = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireSignedIn(ctx);
+    const rows = await queryRows<{
+      namespace: string;
+      tenant: string;
+      services: number;
+      applications: string[];
+    }>(
+      `SELECT s.namespace,
+              min(a.tenant) AS tenant,
+              COUNT(*)::int AS services,
+              array_agg(DISTINCT a.application_name) AS applications
+         FROM services s
+         JOIN applications a ON a.id = s.application_id
+        GROUP BY s.namespace
+        ORDER BY s.namespace`,
+    );
+    return rows.map((row) => ({
+      namespace: row.namespace,
+      tenant: row.tenant,
+      services: row.services,
+      applications: [...row.applications].sort(),
+    }));
+  },
+});
+
+/** Every service in every application (the Service page). */
+export const listAllServices = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireSignedIn(ctx);
+    const rows = await queryRows<
+      ServiceDbRow & { application_name: string; tenant: Tenant }
+    >(
+      `SELECT s.*, a.application_name, a.tenant
+         FROM services s
+         JOIN applications a ON a.id = s.application_id
+        ORDER BY s.created_at DESC, s.id ASC`,
+    );
+    return rows.map((row) => ({
+      ...toService(row),
+      applicationId: row.application_id,
+      applicationName: row.application_name,
+      tenant: row.tenant,
+    }));
+  },
+});
+
+/** Every worker node in every application (the Worker Nodes page). */
+export const listAllWorkerNodes = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireSignedIn(ctx);
+    const rows = await queryRows<
+      NodeDbRow & { application_name: string; tenant: Tenant }
+    >(
+      `SELECT n.*, a.application_name, a.tenant
+         FROM worker_nodes n
+         JOIN applications a ON a.id = n.application_id
+        ORDER BY n.created_at DESC, n.id ASC`,
+    );
+    return rows.map((row) => ({
+      ...toNode(row),
+      applicationId: row.application_id,
+      applicationName: row.application_name,
+      tenant: row.tenant,
+      createdAt: Number(row.created_at),
+    }));
+  },
+});
+
+/** Counters behind the dashboard summary cards. */
+export const dashboardStats = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireSignedIn(ctx);
+    const [tenants, namespaces, services, applications] = await Promise.all([
+      queryRows<{ count: number }>("SELECT COUNT(*)::int AS count FROM tenants"),
+      queryRows<{ count: number }>(
+        "SELECT COUNT(DISTINCT namespace)::int AS count FROM services",
+      ),
+      queryRows<{ count: number }>(
+        "SELECT COUNT(*)::int AS count FROM services",
+      ),
+      queryRows<{ count: number }>(
+        "SELECT COUNT(*)::int AS count FROM applications",
+      ),
+    ]);
+    return {
+      totalTenants: tenants[0].count,
+      totalNamespaces: namespaces[0].count,
+      totalServices: services[0].count,
+      totalApplications: applications[0].count,
+    };
   },
 });

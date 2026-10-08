@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
-import { TENANT_LABELS } from "@/lib/onboarding-schema";
+import { tenantLabel } from "@/lib/onboarding-schema";
 import { cn } from "@/lib/utils";
 import { useAction } from "convex/react";
 import { format } from "date-fns";
@@ -125,7 +125,7 @@ export function ApplicationList({ selectedId, onSelect, refreshToken }: Props) {
 
                   <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     <span className="border-border/70 rounded border px-1.5 py-0.5">
-                      {TENANT_LABELS[application.tenant]}
+                      {tenantLabel(application.tenant)}
                     </span>
                     <span>
                       {application.nodeCount}/{application.totalWorkerNodes}{" "}

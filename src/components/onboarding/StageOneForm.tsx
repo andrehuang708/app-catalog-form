@@ -15,13 +15,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { api } from "@/convex/_generated/api";
 import {
   TENANTS,
-  TENANT_LABELS,
-  stageOneSchema,
+  stageOneSchemaFor,
+  tenantLabel,
   type StageOneValues,
 } from "@/lib/onboarding-schema";
 import { useAction } from "convex/react";
 import { Loader2 } from "lucide-react";
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { useForm, type DefaultValues } from "react-hook-form";
 import { toast } from "sonner";
 import type { ApplicationRow } from "./types";
@@ -45,10 +45,30 @@ const emptyDefaults: DefaultValues<StageOneValues> = {
 export function StageOneForm({ application, onSaved }: Props) {
   const create = useAction(api.onboarding.createApplication);
   const update = useAction(api.onboarding.updateApplication);
+  const fetchTenants = useAction(api.onboarding.listTenants);
   const tenantGroupId = useId();
 
+  // The tenant list lives in Postgres (the Tenant page can add to it). Until
+  // it answers — and if it never does — the four seeded names render, so the
+  // form is usable (and stable) from the very first paint.
+  const [tenants, setTenants] = useState<string[]>([...TENANTS]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTenants({})
+      .then((rows) => {
+        if (!cancelled && rows.length > 0)
+          setTenants(rows.map((row) => row.name));
+      })
+      .catch(() => {
+        /* keep the seeded four */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchTenants]);
+
   const form = useForm<StageOneValues>({
-    resolver: zodResolver(stageOneSchema),
+    resolver: zodResolver(stageOneSchemaFor(tenants)),
     defaultValues: application
       ? {
           applicationName: application.applicationName,
@@ -162,7 +182,7 @@ export function StageOneForm({ application, onSaved }: Props) {
                     disabled={isSubmitting}
                     className="grid grid-cols-2 gap-2 sm:grid-cols-4"
                   >
-                    {TENANTS.map((tenant) => (
+                    {tenants.map((tenant) => (
                       <div
                         key={tenant}
                         className="border-input flex items-center gap-2 rounded-md border px-3 py-2.5 transition-colors has-data-[state=checked]:bg-muted/60"
@@ -175,14 +195,14 @@ export function StageOneForm({ application, onSaved }: Props) {
                           htmlFor={`${tenantGroupId}-${tenant}`}
                           className="cursor-pointer text-sm font-normal"
                         >
-                          {TENANT_LABELS[tenant]}
+                          {tenantLabel(tenant)}
                         </Label>
                       </div>
                     ))}
                   </RadioGroup>
                 </FormControl>
                 <FormDescription>
-                  The team that owns the workload — fund, lend, cs, or ds.
+                  The team that owns the workload.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

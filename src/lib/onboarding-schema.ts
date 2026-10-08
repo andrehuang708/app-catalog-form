@@ -14,15 +14,23 @@ import { z } from "zod";
  */
 
 /** The four tenants an application can belong to. */
+/** The four tenants seeded by default. Tenants are rows in the `tenants`
+ *  table now — these names are only the fallback before that list loads. */
 export const TENANTS = ["fund", "lend", "cs", "ds"] as const;
-export type Tenant = (typeof TENANTS)[number];
+export type Tenant = string;
 
-export const TENANT_LABELS: Record<Tenant, string> = {
+export const TENANT_LABELS: Partial<Record<Tenant, string>> = {
   fund: "Fund",
   lend: "Lend",
   cs: "CS",
   ds: "DS",
 };
+
+/** Display label — known tenants keep their casing, new ones fall back to the
+ *  upper-cased name. */
+export function tenantLabel(tenant: Tenant): string {
+  return TENANT_LABELS[tenant] ?? tenant.toUpperCase();
+}
 
 const wholeNumber = (label: string, min: number, max: number) =>
   z
@@ -54,7 +62,7 @@ export function buildNamespace(
   tenant: string,
   suffix: string,
 ): string {
-  return [namespacePart(applicationName), tenant.toLowerCase(), namespacePart(suffix)]
+  return [namespacePart(applicationName), namespacePart(tenant), namespacePart(suffix)]
     .filter((part) => part.length > 0)
     .join("-");
 }
@@ -65,7 +73,7 @@ export function namespaceSuffixOf(
   tenant: string,
   namespace: string,
 ): string {
-  const prefix = `${namespacePart(applicationName)}-${tenant.toLowerCase()}-`;
+  const prefix = `${namespacePart(applicationName)}-${namespacePart(tenant)}-`;
   return namespace.startsWith(prefix) ? namespace.slice(prefix.length) : namespace;
 }
 
@@ -126,24 +134,38 @@ export function filterNamespaceSuggestions(
 
 /* ------------------------------------------------------------------ stage 1 */
 
-export const stageOneSchema = z.object({
-  applicationName: z
-    .string()
-    .min(1, "Application name is required.")
-    .max(80, "80 characters or fewer.")
-    .refine(
-      (value) => namespacePart(value).length > 0,
-      "Must include at least one letter or number.",
-    ),
-  repositoryName: z
-    .string()
-    .min(1, "Repository name is required.")
-    .max(200, "200 characters or fewer."),
-  tenant: z.enum(TENANTS, { error: "Choose a tenant." }),
-  totalWorkerNodes: wholeNumber("Total worker nodes", 1, 1000),
-});
+/**
+ * Stage 1, validated against the tenants on record: every other field keeps
+ * its usual rules, and the tenant must be one of `tenantList` (defaults to the
+ * four seeded names for callers — tests, first paint — without the list).
+ */
+export function stageOneSchemaFor(tenantList: readonly string[] = TENANTS) {
+  return z.object({
+    applicationName: z
+      .string()
+      .min(1, "Application name is required.")
+      .max(80, "80 characters or fewer.")
+      .refine(
+        (value) => namespacePart(value).length > 0,
+        "Must include at least one letter or number.",
+      ),
+    repositoryName: z
+      .string()
+      .trim()
+      .min(1, "Repository name is required.")
+      .max(200, "200 characters or fewer."),
+    tenant: z
+      .string()
+      .min(1, "Choose a tenant.")
+      .refine((value) => tenantList.includes(value), "Choose a tenant."),
+    totalWorkerNodes: wholeNumber("Total worker nodes", 1, 1000),
+  });
+}
 
-export type StageOneValues = z.infer<typeof stageOneSchema>;
+/** Stage 1 with the default four tenants — the shared, plain schema. */
+export const stageOneSchema = stageOneSchemaFor();
+
+export type StageOneValues = z.infer<ReturnType<typeof stageOneSchemaFor>>;
 
 /* ------------------------------------------------------------------ stage 2 */
 

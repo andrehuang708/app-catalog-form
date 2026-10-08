@@ -24,16 +24,30 @@ const STEPS: Array<{ stage: Stage; label: string }> = [
 type Props = {
   application: ApplicationRow | null;
   onApplicationChange: (application: ApplicationRow | null) => void;
+  /** Open straight at this stage (the Application page’s Edit action uses it);
+   *  falls back to the natural resume stage when the request is unreachable. */
+  requestedStage?: Stage;
 };
 
 /**
  * The stage a resumed application should open at: stage 1 for a new
  * application, stage 2 until the node list matches stage 1, then stage 3.
+ * A requested stage wins when it is reachable (stage 2 locks once services
+ * are saved; stage 3 needs a complete node list).
  */
-function initialStageFor(application: ApplicationRow | null): Stage {
+function initialStageFor(
+  application: ApplicationRow | null,
+  requested?: Stage,
+): Stage {
   if (!application) return 1;
-  if (application.nodeCount !== application.totalWorkerNodes) return 2;
-  return 3;
+  const nodesOk =
+    application.nodeCount === application.totalWorkerNodes &&
+    application.nodeCount > 0;
+  const base: Stage = nodesOk ? 3 : 2;
+  if (requested === 1) return 1;
+  if (requested === 2 && application.serviceCount === 0) return 2;
+  if (requested === 3 && nodesOk) return 3;
+  return base;
 }
 
 function StageSkeleton() {
@@ -53,10 +67,16 @@ function StageSkeleton() {
  * fetched from Postgres on mount (and re-fetched whenever the application
  * changes) instead of streaming through Convex subscriptions.
  */
-export function OnboardingWizard({ application, onApplicationChange }: Props) {
+export function OnboardingWizard({
+  application,
+  onApplicationChange,
+  requestedStage,
+}: Props) {
   const [stage, setStage] = useState<Stage>(() =>
-    initialStageFor(application),
+    initialStageFor(application, requestedStage),
   );
+  // Unlocked stages follow the application’s real progress, never the
+  // requested one — editing stage 1 must not hide stages 2 and 3.
   const [maxStage, setMaxStage] = useState<Stage>(() =>
     initialStageFor(application),
   );

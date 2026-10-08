@@ -45,11 +45,24 @@ function getPool(): Pool {
 }
 
 const DDL = `
+-- Tenants used to be a fixed enum; they are rows now so the Tenant page can
+-- add one and stage 1 can offer it (see listTenants/addTenant).
+CREATE TABLE IF NOT EXISTS tenants (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at BIGINT NOT NULL
+);
+
+INSERT INTO tenants (id, name, created_at)
+SELECT md5(t.name), t.name, (extract(epoch from now()) * 1000)::bigint
+FROM (VALUES ('fund'), ('lend'), ('cs'), ('ds')) AS t(name)
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS applications (
   id TEXT PRIMARY KEY,
   application_name TEXT NOT NULL,
   repository_name TEXT NOT NULL,
-  tenant TEXT NOT NULL CHECK (tenant IN ('fund', 'lend', 'cs', 'ds')),
+  tenant TEXT NOT NULL,
   total_worker_nodes INTEGER NOT NULL CHECK (total_worker_nodes >= 1 AND total_worker_nodes <= 1000),
   submitted_by TEXT NOT NULL,
   submitted_by_name TEXT NOT NULL,
@@ -85,6 +98,9 @@ CREATE INDEX IF NOT EXISTS services_application_id_idx
 
 CREATE INDEX IF NOT EXISTS applications_created_at_idx
   ON applications (created_at DESC);
+
+-- Existing databases still carry the old four-tenant CHECK constraint.
+ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_tenant_check;
 `;
 
 let ready: Promise<void> | undefined;
