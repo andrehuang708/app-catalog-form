@@ -1,19 +1,14 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { Check, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { StageOneForm } from "./StageOneForm";
 import { StageThreeForm } from "./StageThreeForm";
 import { StageTwoForm } from "./StageTwoForm";
-import type {
-  ApplicationRow,
-  ServiceRow,
-  Stage,
-  WorkerNodeRow,
-} from "./types";
+import type { ApplicationRow, ServiceRow, Stage, WorkerNodeRow } from "./types";
 
 const STEPS: Array<{ stage: Stage; label: string }> = [
   { stage: 1, label: "Application details" },
@@ -81,12 +76,10 @@ export function OnboardingWizard({
     initialStageFor(application),
   );
 
-  const fetchNodes = useAction(api.onboarding.getWorkerNodes);
-  const fetchServices = useAction(api.onboarding.getServices);
+  const fetchNodes = useAuthedAction(api.onboarding.getWorkerNodes);
+  const fetchServices = useAuthedAction(api.onboarding.getServices);
   const [nodes, setNodes] = useState<WorkerNodeRow[] | undefined>(undefined);
-  const [services, setServices] = useState<ServiceRow[] | undefined>(
-    undefined,
-  );
+  const [services, setServices] = useState<ServiceRow[] | undefined>(undefined);
 
   useEffect(() => {
     if (!application) return;

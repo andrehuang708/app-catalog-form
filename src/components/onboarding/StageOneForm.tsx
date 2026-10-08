@@ -19,7 +19,7 @@ import {
   tenantLabel,
   type StageOneValues,
 } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { Loader2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useForm, type DefaultValues } from "react-hook-form";
@@ -43,9 +43,9 @@ const emptyDefaults: DefaultValues<StageOneValues> = {
  * when one is already selected).
  */
 export function StageOneForm({ application, onSaved }: Props) {
-  const create = useAction(api.onboarding.createApplication);
-  const update = useAction(api.onboarding.updateApplication);
-  const fetchTenants = useAction(api.onboarding.listTenants);
+  const create = useAuthedAction(api.onboarding.createApplication);
+  const update = useAuthedAction(api.onboarding.updateApplication);
+  const fetchTenants = useAuthedAction(api.onboarding.listTenants);
   const tenantGroupId = useId();
 
   // The tenant list lives in Postgres (the Tenant page can add to it). Until

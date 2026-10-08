@@ -3,7 +3,7 @@ import { ArrowUpRight, Loader2, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -75,7 +75,7 @@ export function StageThreeForm({
   onBack,
   onSaved,
 }: Props) {
-  const saveServices = useAction(api.onboarding.saveServices);
+  const saveServices = useAuthedAction(api.onboarding.saveServices);
   const [draft, setDraft] = useState<ServiceFormValues[]>([]);
 
   const context: ServiceContext = {
@@ -110,13 +110,12 @@ export function StageThreeForm({
         },
         [
           ...savedServices.map((service) => service.namespace),
-          ...draft.map(
-            (service) =>
-              buildNamespace(
-                application.applicationName,
-                application.tenant,
-                service.namespaceSuffix,
-              ),
+          ...draft.map((service) =>
+            buildNamespace(
+              application.applicationName,
+              application.tenant,
+              service.namespaceSuffix,
+            ),
           ),
         ],
       ),
@@ -204,8 +203,8 @@ export function StageThreeForm({
       <h3 className="text-sm font-medium">Services</h3>
       <p className="mt-1.5 mb-7 text-sm text-muted-foreground">
         Add as many services as {application.applicationName} needs — several
-        may share a namespace. Every namespace is saved as {prefix}(free
-        text), then the list is saved in one go.
+        may share a namespace. Every namespace is saved as {prefix}(free text),
+        then the list is saved in one go.
       </p>
 
       {savedServices.length > 0 && (
@@ -496,7 +495,10 @@ export function StageThreeForm({
                       {service.nodeSelectors.join(", ")}
                     </span>
                   </Detail>
-                  <Detail label="Description" className="col-span-2 sm:col-span-3">
+                  <Detail
+                    label="Description"
+                    className="col-span-2 sm:col-span-3"
+                  >
                     {service.description || "—"}
                   </Detail>
                 </div>
@@ -545,7 +547,10 @@ export function StageThreeForm({
                       {service.nodeSelectors.join(", ")}
                     </span>
                   </Detail>
-                  <Detail label="Description" className="col-span-2 sm:col-span-3">
+                  <Detail
+                    label="Description"
+                    className="col-span-2 sm:col-span-3"
+                  >
                     {service.description || "—"}
                   </Detail>
                 </div>

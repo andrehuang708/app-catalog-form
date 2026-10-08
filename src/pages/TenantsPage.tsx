@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { format } from "date-fns";
 import { Loader2, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -59,8 +59,8 @@ const columns: Array<DataTableColumn<TenantRow>> = [
  * “Add New Tenant” opens a modal and persists straight to Postgres.
  */
 export default function TenantsPage() {
-  const tenants = useActionList(useAction(api.onboarding.listTenants));
-  const addTenant = useAction(api.onboarding.addTenant);
+  const tenants = useActionList(useAuthedAction(api.onboarding.listTenants));
+  const addTenant = useAuthedAction(api.onboarding.addTenant);
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -95,8 +95,8 @@ export default function TenantsPage() {
           Tenant
         </h2>
         <p className="text-muted-foreground mt-1.5 text-sm">
-          Tenants that own workloads — add one here and it becomes selectable
-          in the onboarding form.
+          Tenants that own workloads — add one here and it becomes selectable in
+          the onboarding form.
         </p>
       </div>
 
@@ -142,9 +142,7 @@ export default function TenantsPage() {
               {name.trim() && (
                 <p className="text-muted-foreground text-xs">
                   Will be added as{" "}
-                  <span className="font-mono">
-                    {name.trim().toLowerCase()}
-                  </span>
+                  <span className="font-mono">{name.trim().toLowerCase()}</span>
                 </p>
               )}
             </div>

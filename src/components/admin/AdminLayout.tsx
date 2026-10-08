@@ -1,6 +1,6 @@
 import logo from "@/assets/logo.svg";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { UserMenu } from "@/components/UserMenu";
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +15,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
   Boxes,
@@ -24,11 +23,10 @@ import {
   HardDrive,
   Home,
   LayoutGrid,
-  LogOut,
   Server,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 /** The admin menu — order matters: this is the sidebar’s navigation spec. */
 const NAV_ITEMS: Array<{
@@ -51,21 +49,15 @@ const NAV_ITEMS: Array<{
  * and the routed page content below. Home routes back to the dashboard.
  */
 export function AdminLayout() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
 
-  const isHome = location.pathname === "/" || location.pathname === "/dashboard";
+  const isHome =
+    location.pathname === "/" || location.pathname === "/dashboard";
   const activeLabel =
     (isHome
       ? NAV_ITEMS.find((item) => item.to === "/dashboard")
-      : NAV_ITEMS.find((item) => item.to === location.pathname))?.label ??
-    "Dashboard";
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
-  };
+      : NAV_ITEMS.find((item) => item.to === location.pathname)
+    )?.label ?? "Dashboard";
 
   return (
     <SidebarProvider>
@@ -116,26 +108,8 @@ export function AdminLayout() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="flex items-center gap-2 px-2 py-1.5">
-            <div className="bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium">
-              {(user?.name || user?.email || "?").charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-sm">{user?.name || "Platform team"}</p>
-              <p className="text-muted-foreground truncate text-xs">
-                {user?.email || "Signed in"}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground hover:text-foreground size-8"
-              onClick={handleSignOut}
-              title="Sign out"
-            >
-              <LogOut className="size-4" />
-            </Button>
+          <div className="px-1">
+            <UserMenu />
           </div>
         </SidebarFooter>
       </Sidebar>
@@ -148,6 +122,9 @@ export function AdminLayout() {
           <span className="text-muted-foreground hidden text-xs sm:inline">
             · Legacy → Kubernetes
           </span>
+          <div className="ml-auto">
+            <UserMenu compact />
+          </div>
         </header>
 
         <main

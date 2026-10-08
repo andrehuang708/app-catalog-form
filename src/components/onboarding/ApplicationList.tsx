@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { tenantLabel } from "@/lib/onboarding-schema";
 import { cn } from "@/lib/utils";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { format } from "date-fns";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -23,7 +23,7 @@ type Props = {
  * long repository names stay readable in the narrow column.
  */
 export function ApplicationList({ selectedId, onSelect, refreshToken }: Props) {
-  const listApplications = useAction(api.onboarding.listApplications);
+  const listApplications = useAuthedAction(api.onboarding.listApplications);
   const [applications, setApplications] = useState<
     ApplicationRow[] | undefined
   >(undefined);

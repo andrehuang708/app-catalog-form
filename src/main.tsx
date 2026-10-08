@@ -3,8 +3,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { AuthProvider } from "@/components/AuthProvider";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -117,45 +117,47 @@ createRoot(document.getElementById("root")!).render(
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route
-                path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
-              />
-              {/* Admin Panel: one signed-in shell (sidebar + top bar) around
+      <ConvexProvider client={convex}>
+        <AuthProvider>
+          <BrowserRouter>
+            <RouteSyncer />
+            <Suspense fallback={<RouteLoading />}>
+              <Routes>
+                <Route
+                  path="/auth"
+                  element={<AuthPage redirectAfterAuth="/dashboard" />}
+                />
+                {/* Admin Panel: one signed-in shell (sidebar + top bar) around
                   every management page. `/` and `/dashboard` are both the
                   dashboard; unsigned visitors bounce straight to /auth with a
                   returnTo so login lands them back where they asked for. */}
-              <Route
-                element={
-                  <RequireAuth
-                    title="Sign in to the onboarding form"
-                    description="The Kube App Onboarding Form is internal to the platform team."
-                    redirectImmediately
-                  >
-                    <AdminLayout />
-                  </RequireAuth>
-                }
-              >
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route path="/applications" element={<ApplicationsPage />} />
-                <Route path="/namespaces" element={<NamespacesPage />} />
-                <Route path="/services" element={<ServicesPage />} />
-                <Route path="/worker-nodes" element={<WorkerNodesPage />} />
-                <Route path="/tenants" element={<TenantsPage />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
-      </ConvexAuthProvider>
+                <Route
+                  element={
+                    <RequireAuth
+                      title="Sign in to the onboarding form"
+                      description="The Kube App Onboarding Form is internal to the platform team."
+                      redirectImmediately
+                    >
+                      <AdminLayout />
+                    </RequireAuth>
+                  }
+                >
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/onboarding" element={<OnboardingPage />} />
+                  <Route path="/applications" element={<ApplicationsPage />} />
+                  <Route path="/namespaces" element={<NamespacesPage />} />
+                  <Route path="/services" element={<ServicesPage />} />
+                  <Route path="/worker-nodes" element={<WorkerNodesPage />} />
+                  <Route path="/tenants" element={<TenantsPage />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+          <Toaster />
+        </AuthProvider>
+      </ConvexProvider>
     </RootErrorBoundary>
   </StrictMode>,
 );

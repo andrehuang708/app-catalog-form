@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { format } from "date-fns";
 
 type WorkerNodeRow = {
@@ -28,7 +28,9 @@ const columns: Array<DataTableColumn<WorkerNodeRow>> = [
     id: "ip",
     header: "IP Address",
     accessor: (row) => row.ipAddress,
-    cell: (row) => <span className="font-mono text-[13px]">{row.ipAddress}</span>,
+    cell: (row) => (
+      <span className="font-mono text-[13px]">{row.ipAddress}</span>
+    ),
   },
   {
     id: "status",
@@ -70,7 +72,9 @@ const columns: Array<DataTableColumn<WorkerNodeRow>> = [
  * hostname, IP address, cluster-join status, owning application, and tenant.
  */
 export default function WorkerNodesPage() {
-  const nodes = useActionList(useAction(api.onboarding.listAllWorkerNodes));
+  const nodes = useActionList(
+    useAuthedAction(api.onboarding.listAllWorkerNodes),
+  );
 
   return (
     <div>

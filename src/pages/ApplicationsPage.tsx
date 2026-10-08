@@ -12,7 +12,7 @@ import { statusOf, type ApplicationRow } from "@/components/onboarding/types";
 import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { format } from "date-fns";
 import { Pencil, Plus } from "lucide-react";
 import { useState } from "react";
@@ -57,7 +57,7 @@ function stageOptions(application: ApplicationRow) {
  */
 export default function ApplicationsPage() {
   const applications = useActionList(
-    useAction(api.onboarding.listApplications),
+    useAuthedAction(api.onboarding.listApplications),
   );
   const navigate = useNavigate();
   const [editing, setEditing] = useState<ApplicationRow | null>(null);
@@ -156,8 +156,8 @@ export default function ApplicationsPage() {
           Application
         </h2>
         <p className="text-muted-foreground mt-1.5 text-sm">
-          Applications that have been onboarded — search, sort, or edit a row
-          to jump back into any stage of its form.
+          Applications that have been onboarded — search, sort, or edit a row to
+          jump back into any stage of its form.
         </p>
       </div>
 
@@ -180,15 +180,16 @@ export default function ApplicationsPage() {
         <p className="text-destructive mt-2 text-sm">{applications.error}</p>
       )}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Edit “{editing?.applicationName ?? ""}”
-            </DialogTitle>
+            <DialogTitle>Edit “{editing?.applicationName ?? ""}”</DialogTitle>
             <DialogDescription>
-              Pick the stage to open in the onboarding form. Everything is
-              saved as you go.
+              Pick the stage to open in the onboarding form. Everything is saved
+              as you go.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-2 flex flex-col gap-2">

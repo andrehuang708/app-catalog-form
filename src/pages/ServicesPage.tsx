@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { format } from "date-fns";
 
 type ServiceRow = {
@@ -25,15 +25,15 @@ const columns: Array<DataTableColumn<ServiceRow>> = [
     id: "serviceName",
     header: "Service Name",
     accessor: (row) => row.serviceName,
-    cell: (row) => (
-      <span className="font-medium">{row.serviceName}</span>
-    ),
+    cell: (row) => <span className="font-medium">{row.serviceName}</span>,
   },
   {
     id: "namespace",
     header: "Namespace",
     accessor: (row) => row.namespace,
-    cell: (row) => <span className="font-mono text-[13px]">{row.namespace}</span>,
+    cell: (row) => (
+      <span className="font-mono text-[13px]">{row.namespace}</span>
+    ),
   },
   {
     id: "nodeSelectors",
@@ -89,7 +89,9 @@ const columns: Array<DataTableColumn<ServiceRow>> = [
  * port, and created date on wider screens).
  */
 export default function ServicesPage() {
-  const services = useActionList(useAction(api.onboarding.listAllServices));
+  const services = useActionList(
+    useAuthedAction(api.onboarding.listAllServices),
+  );
 
   return (
     <div>

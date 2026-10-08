@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { Boxes } from "lucide-react";
 
 type NamespaceRow = {
@@ -18,7 +18,9 @@ const columns: Array<DataTableColumn<NamespaceRow>> = [
     id: "namespace",
     header: "Namespace",
     accessor: (row) => row.namespace,
-    cell: (row) => <span className="font-mono text-[13px]">{row.namespace}</span>,
+    cell: (row) => (
+      <span className="font-mono text-[13px]">{row.namespace}</span>
+    ),
   },
   {
     id: "tenant",
@@ -51,7 +53,9 @@ const columns: Array<DataTableColumn<NamespaceRow>> = [
  * in each one.
  */
 export default function NamespacesPage() {
-  const namespaces = useActionList(useAction(api.onboarding.listNamespaces));
+  const namespaces = useActionList(
+    useAuthedAction(api.onboarding.listNamespaces),
+  );
 
   return (
     <div>

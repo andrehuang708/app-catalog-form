@@ -101,6 +101,28 @@ CREATE INDEX IF NOT EXISTS applications_created_at_idx
 
 -- Existing databases still carry the old four-tenant CHECK constraint.
 ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_tenant_check;
+
+-- Accounts live here, not in Convex: the sign-in form accepts either the
+-- user id or the email address and checks the scrypt hash in password_hash
+-- (see src/convex/password.ts and the actions in src/convex/auth.ts).
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+
+-- One row per signed-in browser. The id column is the sha256 of the bearer
+-- token, so a leaked database still cannot be replayed as a live session.
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions (user_id);
 `;
 
 let ready: Promise<void> | undefined;

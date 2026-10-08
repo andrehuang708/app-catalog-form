@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { AuthProvider } from "../src/components/AuthProvider";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -80,11 +80,13 @@ describe("landing page", () => {
 
 describe("dashboard page", () => {
   const html = renderToString(
-    <ConvexAuthProvider client={client}>
-      <MemoryRouter initialEntries={["/dashboard"]}>
-        <Dashboard />
-      </MemoryRouter>
-    </ConvexAuthProvider>,
+    <ConvexProvider client={client}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <Dashboard />
+        </MemoryRouter>
+      </AuthProvider>
+    </ConvexProvider>,
   );
 
   it("shows the three summary counters and the recent onboarding table", () => {
@@ -109,11 +111,13 @@ describe("dashboard page", () => {
 
 describe("request onboarding page", () => {
   const html = renderToString(
-    <ConvexAuthProvider client={client}>
-      <MemoryRouter initialEntries={["/onboarding"]}>
-        <OnboardingPage />
-      </MemoryRouter>
-    </ConvexAuthProvider>,
+    <ConvexProvider client={client}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/onboarding"]}>
+          <OnboardingPage />
+        </MemoryRouter>
+      </AuthProvider>
+    </ConvexProvider>,
   );
 
   it("carries the request heading and the saved list", () => {
@@ -124,17 +128,24 @@ describe("request onboarding page", () => {
 
 describe("auth page", () => {
   const html = renderToString(
-    <ConvexAuthProvider client={client}>
-      <MemoryRouter initialEntries={["/auth"]}>
-        <AuthPage redirectAfterAuth="/dashboard" />
-      </MemoryRouter>
-    </ConvexAuthProvider>,
+    <ConvexProvider client={client}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/auth"]}>
+          <AuthPage redirectAfterAuth="/dashboard" />
+        </MemoryRouter>
+      </AuthProvider>
+    </ConvexProvider>,
   );
 
   it("uses the onboarding-form sign-in copy", () => {
     expect(html).toContain("Sign in");
-    expect(html).toContain("Use your team email to open the onboarding form");
+    expect(html).toContain(
+      "Use your team email or user ID to open the onboarding form",
+    );
     expect(html).not.toContain("Get Started");
+    // The email one-time-code flow is gone: sign-in is a password now.
+    expect(html).not.toContain("Check your email");
+    expect(html).not.toContain("Continue as Guest");
   });
 });
 
@@ -161,8 +172,14 @@ describe("app shell files", () => {
     // `/` and `/dashboard` both render the dashboard inside the admin shell,
     // and unsigned visitors bounce straight to /auth.
     expect(main).toContain('<Route path="/" element={<Dashboard />} />');
-    expect(main).toContain('<Route path="/dashboard" element={<Dashboard />} />');
+    expect(main).toContain(
+      '<Route path="/dashboard" element={<Dashboard />} />',
+    );
     expect(main).toContain("redirectImmediately");
-    expect(main).toContain('<Route\n                path="/auth"');
+    // The auth route is its own entry outside the admin shell. Matched
+    // loosely on whitespace so formatting changes do not break it.
+    expect(main).toMatch(
+      /<Route\s+path="\/auth"\s+element=\{<AuthPage redirectAfterAuth="\/dashboard"\s*\/>\s*\}\s*\/>/,
+    );
   });
 });

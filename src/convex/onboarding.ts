@@ -1,8 +1,7 @@
 "use node";
 
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { randomUUID } from "node:crypto";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import {
   buildNamespace,
   servicesSchema,
@@ -10,10 +9,9 @@ import {
   workerNodesSchema,
   type Tenant,
 } from "../lib/onboarding-schema";
+import { sessionUser } from "./auth";
 import { queryRows, withTransaction } from "./pg";
-import { api } from "./_generated/api";
 import { action } from "./_generated/server";
-import type { ActionCtx } from "./_generated/server";
 
 // Tenants are rows in the `tenants` table (the DDL seeds the original four);
 // membership is checked against them inside parseStageOne.
@@ -29,11 +27,20 @@ function firstIssue(issues: Array<{ message: string }>) {
   return issues[0]?.message ?? "Check the form values and try again.";
 }
 
-async function requireSignedIn(ctx: ActionCtx) {
-  const userId = await getAuthUserId(ctx);
-  if (userId === null)
-    throw new Error("You must be signed in to save an application.");
-  return userId;
+/**
+ * Every action below carries the browser's bearer token, which is resolved
+ * against the `sessions` table before any data is read or written. Convex
+ * Auth no longer exists in this project, so this is the only gate left
+ * (see src/convex/auth.ts).
+ */
+async function requireSignedIn(sessionToken: string) {
+  const user = await sessionUser(sessionToken);
+  // ConvexError so the browser shows this sentence and not "Server Error".
+  if (user === null)
+    throw new ConvexError(
+      "Your session has expired. Sign in again to continue.",
+    );
+  return user;
 }
 
 function parseStageOne(
@@ -149,8 +156,7 @@ async function requireApplication(
     "SELECT * FROM applications WHERE id = $1",
     [applicationId],
   );
-  if (rows.length === 0)
-    throw new Error("This application no longer exists.");
+  if (rows.length === 0) throw new Error("This application no longer exists.");
   return rows[0];
 }
 
@@ -180,9 +186,9 @@ async function countsFor(applicationId: string) {
 
 /** Saved applications, newest first. Only signed-in users can read them. */
 export const listApplications = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireSignedIn(ctx);
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
 
     const applications = await queryRows<ApplicationDbRow>(
       "SELECT * FROM applications ORDER BY created_at DESC LIMIT 100",
@@ -200,17 +206,15 @@ export const listApplications = action({
         [ids],
       ),
     ]);
-    const nodes = new Map(nodeCounts.map((row) => [row.application_id, row.count]));
+    const nodes = new Map(
+      nodeCounts.map((row) => [row.application_id, row.count]),
+    );
     const services = new Map(
       serviceCounts.map((row) => [row.application_id, row.count]),
     );
 
     return applications.map((row) =>
-      toApplication(
-        row,
-        nodes.get(row.id) ?? 0,
-        services.get(row.id) ?? 0,
-      ),
+      toApplication(row, nodes.get(row.id) ?? 0, services.get(row.id) ?? 0),
     );
   },
 });
@@ -222,17 +226,13 @@ export const createApplication = action({
     repositoryName: v.string(),
     tenant: tenantValidator,
     totalWorkerNodes: v.number(),
+    sessionToken: v.string(),
   },
-  handler: async (ctx, args): Promise<ApplicationRow> => {
-    const userId = await requireSignedIn(ctx);
+  handler: async (_ctx, args): Promise<ApplicationRow> => {
+    const user = await requireSignedIn(args.sessionToken);
     const values = parseStageOne(args, await tenantNames());
-
-    // Annotated (and the handler's return type is explicit) so this module's
-    // export types never depend circularly on api, which references them.
-    const user: { name?: string | null; email?: string | null } | null =
-      await ctx.runQuery(api.users.currentUser);
     const submittedByName =
-      user?.name?.trim() || user?.email?.trim() || "Platform team";
+      user.name.trim() || user.email?.trim() || "Platform team";
 
     const rows = await queryRows<ApplicationDbRow>(
       `INSERT INTO applications
@@ -246,7 +246,7 @@ export const createApplication = action({
         values.repositoryName,
         values.tenant,
         Number(values.totalWorkerNodes),
-        userId,
+        user.id,
         submittedByName,
         Date.now(),
       ],
@@ -264,9 +264,10 @@ export const updateApplication = action({
     repositoryName: v.string(),
     tenant: tenantValidator,
     totalWorkerNodes: v.number(),
+    sessionToken: v.string(),
   },
-  handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const application = await requireApplication(args.applicationId);
     const values = parseStageOne(args, await tenantNames());
 
@@ -308,6 +309,7 @@ export const updateApplication = action({
 export const saveWorkerNodes = action({
   args: {
     applicationId: v.string(),
+    sessionToken: v.string(),
     nodes: v.array(
       v.object({
         ipAddress: v.string(),
@@ -316,8 +318,8 @@ export const saveWorkerNodes = action({
       }),
     ),
   },
-  handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const application = await requireApplication(args.applicationId);
 
     const parsed = workerNodesSchema(application.total_worker_nodes).safeParse({
@@ -347,10 +349,10 @@ export const saveWorkerNodes = action({
             "A saved service relies on the current worker nodes. Keep at least one of its nodes in the list.",
           );
         if (kept.length !== service.node_selectors.length) {
-          await client.query("UPDATE services SET node_selectors = $1 WHERE id = $2", [
-            kept,
-            service.id,
-          ]);
+          await client.query(
+            "UPDATE services SET node_selectors = $1 WHERE id = $2",
+            [kept, service.id],
+          );
         }
       }
 
@@ -385,6 +387,7 @@ export const saveWorkerNodes = action({
 export const saveServices = action({
   args: {
     applicationId: v.string(),
+    sessionToken: v.string(),
     services: v.array(
       v.object({
         namespaceSuffix: v.string(),
@@ -396,8 +399,8 @@ export const saveServices = action({
       }),
     ),
   },
-  handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const application = await requireApplication(args.applicationId);
 
     const nodes = await queryRows<NodeDbRow>(
@@ -461,9 +464,9 @@ export const saveServices = action({
 
 /** The worker nodes saved for one application (stage 2 and 3 both read this). */
 export const getWorkerNodes = action({
-  args: { applicationId: v.string() },
-  handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+  args: { applicationId: v.string(), sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const rows = await queryRows<NodeDbRow>(
       "SELECT * FROM worker_nodes WHERE application_id = $1 ORDER BY created_at ASC, id ASC",
       [args.applicationId],
@@ -474,9 +477,9 @@ export const getWorkerNodes = action({
 
 /** The services saved for one application (stage 3 shows and extends these). */
 export const getServices = action({
-  args: { applicationId: v.string() },
-  handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+  args: { applicationId: v.string(), sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const rows = await queryRows<ServiceDbRow>(
       "SELECT * FROM services WHERE application_id = $1 ORDER BY created_at ASC, id ASC",
       [args.applicationId],
@@ -489,9 +492,9 @@ export const getServices = action({
 
 /** Every tenant with its application count (Tenant page + stage 1 radios). */
 export const listTenants = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireSignedIn(ctx);
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const rows = await queryRows<{
       name: string;
       created_at: number;
@@ -514,9 +517,9 @@ export const listTenants = action({
 
 /** Adds a tenant to the shared list (Tenant page → "Add New Tenant"). */
 export const addTenant = action({
-  args: { name: v.string() },
-  handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+  args: { name: v.string(), sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const name = args.name.trim().toLowerCase();
     if (!/^[a-z0-9]([-a-z0-9]{0,28}[a-z0-9])?$/.test(name))
       throw new Error(
@@ -528,7 +531,11 @@ export const addTenant = action({
     );
     if (existing.length > 0) throw new Error("That tenant already exists.");
 
-    const rows = await queryRows<{ id: string; name: string; created_at: number }>(
+    const rows = await queryRows<{
+      id: string;
+      name: string;
+      created_at: number;
+    }>(
       "INSERT INTO tenants (id, name, created_at) VALUES ($1, $2, $3) RETURNING *",
       [randomUUID(), name, Date.now()],
     );
@@ -543,9 +550,9 @@ export const addTenant = action({
 
 /** Distinct namespaces across all applications, with usage counts. */
 export const listNamespaces = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireSignedIn(ctx);
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const rows = await queryRows<{
       namespace: string;
       tenant: string;
@@ -572,9 +579,9 @@ export const listNamespaces = action({
 
 /** Every service in every application (the Service page). */
 export const listAllServices = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireSignedIn(ctx);
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const rows = await queryRows<
       ServiceDbRow & { application_name: string; tenant: Tenant }
     >(
@@ -594,9 +601,9 @@ export const listAllServices = action({
 
 /** Every worker node in every application (the Worker Nodes page). */
 export const listAllWorkerNodes = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireSignedIn(ctx);
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const rows = await queryRows<
       NodeDbRow & { application_name: string; tenant: Tenant }
     >(
@@ -617,11 +624,13 @@ export const listAllWorkerNodes = action({
 
 /** Counters behind the dashboard summary cards. */
 export const dashboardStats = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireSignedIn(ctx);
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args) => {
+    await requireSignedIn(args.sessionToken);
     const [tenants, namespaces, services, applications] = await Promise.all([
-      queryRows<{ count: number }>("SELECT COUNT(*)::int AS count FROM tenants"),
+      queryRows<{ count: number }>(
+        "SELECT COUNT(*)::int AS count FROM tenants",
+      ),
       queryRows<{ count: number }>(
         "SELECT COUNT(DISTINCT namespace)::int AS count FROM services",
       ),

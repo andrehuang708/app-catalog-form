@@ -17,7 +17,7 @@ import {
   workerNodesSchema,
   type StageTwoValues,
 } from "@/lib/onboarding-schema";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { Loader2, Plus, X } from "lucide-react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -40,7 +40,7 @@ export function StageTwoForm({
   onBack,
   onSaved,
 }: Props) {
-  const saveNodes = useAction(api.onboarding.saveWorkerNodes);
+  const saveNodes = useAuthedAction(api.onboarding.saveWorkerNodes);
   const total = application.totalWorkerNodes;
 
   const form = useForm<StageTwoValues>({
@@ -109,7 +109,10 @@ export function StageTwoForm({
         >
           <div className="flex flex-col gap-3">
             {fields.map((row, index) => (
-              <div key={row.id} className="rounded-md border border-border/70 p-4">
+              <div
+                key={row.id}
+                className="rounded-md border border-border/70 p-4"
+              >
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
                     {`Node ${index + 1}`}

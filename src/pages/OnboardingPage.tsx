@@ -1,13 +1,10 @@
 import { ApplicationList } from "@/components/onboarding/ApplicationList";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
-import type {
-  ApplicationRow,
-  Stage,
-} from "@/components/onboarding/types";
+import type { ApplicationRow, Stage } from "@/components/onboarding/types";
 import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -29,7 +26,7 @@ export default function OnboardingPage() {
   const requestedStage = parseStage(searchParams.get("stage"));
 
   const applications = useActionList(
-    useAction(api.onboarding.listApplications),
+    useAuthedAction(api.onboarding.listApplications),
   );
   // The freshest copy of the selected application (straight from a save);
   // the URL plus the loaded list resolve the selection otherwise.
@@ -44,10 +41,9 @@ export default function OnboardingPage() {
 
   const applySelection = (application: ApplicationRow | null) => {
     setOverride(application);
-    setSearchParams(
-      application ? { application: application._id } : {},
-      { replace: true },
-    );
+    setSearchParams(application ? { application: application._id } : {}, {
+      replace: true,
+    });
   };
 
   // Every stage save refreshes the list — the Postgres-backed actions are
@@ -58,9 +54,7 @@ export default function OnboardingPage() {
   };
 
   const waitingForApplication =
-    applicationId !== null &&
-    selected === null &&
-    applications.isLoading;
+    applicationId !== null && selected === null && applications.isLoading;
 
   return (
     <div>
@@ -69,9 +63,8 @@ export default function OnboardingPage() {
           Request Onboarding
         </h2>
         <p className="text-muted-foreground mt-1.5 max-w-xl text-sm leading-6">
-          Three stages — application details, worker nodes, then services.
-          Every stage is saved as you go and listed here for the whole
-          platform team.
+          Three stages — application details, worker nodes, then services. Every
+          stage is saved as you go and listed here for the whole platform team.
         </p>
       </div>
 

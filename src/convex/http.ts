@@ -1,8 +1,8 @@
 import { httpRouter } from "convex/server";
-import { auth } from "./auth";
 
+// No HTTP actions: authentication is a pair of Postgres-backed Convex actions
+// (see src/convex/auth.ts), so the OIDC discovery routes that Convex Auth used
+// to publish here are gone with it.
 const http = httpRouter();
-
-auth.addHttpRoutes(http);
 
 export default http;

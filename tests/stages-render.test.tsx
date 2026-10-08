@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { AuthProvider } from "../src/components/AuthProvider";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { renderToString } from "react-dom/server";
 import { StageThreeForm } from "../src/components/onboarding/StageThreeForm";
 import { StageTwoForm } from "../src/components/onboarding/StageTwoForm";
@@ -52,14 +52,16 @@ const savedService: ServiceRow = {
 
 describe("stage 2 — worker nodes form", () => {
   const html = renderToString(
-    <ConvexAuthProvider client={client}>
-      <StageTwoForm
-        application={application}
-        initialNodes={savedNodes}
-        onBack={() => {}}
-        onSaved={() => {}}
-      />
-    </ConvexAuthProvider>,
+    <ConvexProvider client={client}>
+      <AuthProvider>
+        <StageTwoForm
+          application={application}
+          initialNodes={savedNodes}
+          onBack={() => {}}
+          onSaved={() => {}}
+        />
+      </AuthProvider>
+    </ConvexProvider>,
   );
 
   it("shows the stage heading and the row counter", () => {
@@ -94,14 +96,16 @@ describe("stage 2 — worker nodes form", () => {
 describe("stage 3 — services form", () => {
   it("renders every service field and the namespace preview", () => {
     const html = renderToString(
-      <ConvexAuthProvider client={client}>
-        <StageThreeForm
-          application={application}
-          nodes={savedNodes}
-          savedServices={[]}
-          onSaved={() => {}}
-        />
-      </ConvexAuthProvider>,
+      <ConvexProvider client={client}>
+        <AuthProvider>
+          <StageThreeForm
+            application={application}
+            nodes={savedNodes}
+            savedServices={[]}
+            onSaved={() => {}}
+          />
+        </AuthProvider>
+      </ConvexProvider>,
     );
 
     expect(html).toContain("Services");
@@ -119,14 +123,16 @@ describe("stage 3 — services form", () => {
 
   it("offers the stage 2 nodes as node selector options", () => {
     const html = renderToString(
-      <ConvexAuthProvider client={client}>
-        <StageThreeForm
-          application={application}
-          nodes={savedNodes}
-          savedServices={[]}
-          onSaved={() => {}}
-        />
-      </ConvexAuthProvider>,
+      <ConvexProvider client={client}>
+        <AuthProvider>
+          <StageThreeForm
+            application={application}
+            nodes={savedNodes}
+            savedServices={[]}
+            onSaved={() => {}}
+          />
+        </AuthProvider>
+      </ConvexProvider>,
     );
     expect(html).toContain("worker-01");
     expect(html).toContain("worker-02");
@@ -136,14 +142,16 @@ describe("stage 3 — services form", () => {
 
   it("lists saved services and hides the back link once they lock the nodes", () => {
     const html = renderToString(
-      <ConvexAuthProvider client={client}>
-        <StageThreeForm
-          application={{ ...application, serviceCount: 1 }}
-          nodes={savedNodes}
-          savedServices={[savedService]}
-          onSaved={() => {}}
-        />
-      </ConvexAuthProvider>,
+      <ConvexProvider client={client}>
+        <AuthProvider>
+          <StageThreeForm
+            application={{ ...application, serviceCount: 1 }}
+            nodes={savedNodes}
+            savedServices={[savedService]}
+            onSaved={() => {}}
+          />
+        </AuthProvider>
+      </ConvexProvider>,
     );
     expect(html).toContain("1 service already saved");
     expect(html).toContain("1 in the list");

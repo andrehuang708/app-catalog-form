@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
 import { statusOf, type ApplicationRow } from "@/components/onboarding/types";
-import { useAction } from "convex/react";
+import { useAuthedAction } from "@/hooks/use-authed-action";
 import { format } from "date-fns";
 import { Boxes, Building2, Server } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -93,9 +93,9 @@ const recentColumns: Array<DataTableColumn<ApplicationRow>> = [
  * of the most recent onboarding runs.
  */
 export default function Dashboard() {
-  const fetchStats = useAction(api.onboarding.dashboardStats);
+  const fetchStats = useAuthedAction(api.onboarding.dashboardStats);
   const applications = useActionList(
-    useAction(api.onboarding.listApplications),
+    useAuthedAction(api.onboarding.listApplications),
   );
   const [stats, setStats] = useState<Stats | null>(null);
 
