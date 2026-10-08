@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowUpRight, Loader2, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { useAction } from "convex/react";
@@ -22,7 +22,9 @@ import { api } from "@/convex/_generated/api";
 import {
   buildNamespace,
   emptyService,
+  filterNamespaceSuggestions,
   namespacePart,
+  namespaceSuggestions,
   namespaceSuffixOf,
   serviceSchema,
   type ServiceContext,
@@ -62,7 +64,9 @@ function Detail({
  * Stage 3 — a free-length service list. Each entry stores a namespace built as
  * applicationname-tenant-(freetext), the service name, port, health check URL,
  * node selector (chosen from the stage 2 nodes), and a free-text description.
- * The whole list is saved in one mutation.
+ * Namespaces are reusable: several services may share one, and the namespace
+ * field autocompletes against the namespaces already in the list. The whole
+ * list is saved in one mutation.
  */
 export function StageThreeForm({
   application,
@@ -95,6 +99,43 @@ export function StageThreeForm({
   const namespaceFor = (suffix: string) =>
     buildNamespace(application.applicationName, application.tenant, suffix);
 
+  // Namespaces already in play (saved + draft) — offered back on the
+  // namespace field so a new service can join an existing one.
+  const suggestions = useMemo(
+    () =>
+      namespaceSuggestions(
+        {
+          applicationName: application.applicationName,
+          tenant: application.tenant,
+        },
+        [
+          ...savedServices.map((service) => service.namespace),
+          ...draft.map(
+            (service) =>
+              buildNamespace(
+                application.applicationName,
+                application.tenant,
+                service.namespaceSuffix,
+              ),
+          ),
+        ],
+      ),
+    [application.applicationName, application.tenant, savedServices, draft],
+  );
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const matchingSuggestions = filterNamespaceSuggestions(
+    suggestions,
+    namespaceSuffix ?? "",
+  );
+  const pickSuggestion = (suffix: string) => {
+    form.setValue("namespaceSuffix", suffix, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+    setShowSuggestions(false);
+    form.setFocus("serviceName");
+  };
+
   const savedValues: ServiceFormValues[] = savedServices.map((service) => ({
     namespaceSuffix: namespaceSuffixOf(
       application.applicationName,
@@ -115,12 +156,6 @@ export function StageThreeForm({
       ...savedServices.map((service) => service.serviceName),
       ...draft.map((service) => service.serviceName),
     ]);
-    const takenNamespaces = new Set([
-      ...savedServices.map((service) => service.namespace),
-      ...draft.map((service) =>
-        namespaceFor(service.namespaceSuffix),
-      ),
-    ]);
 
     if (takenNames.has(values.serviceName)) {
       form.setError("serviceName", {
@@ -129,14 +164,9 @@ export function StageThreeForm({
       });
       return;
     }
-    const namespace = namespaceFor(values.namespaceSuffix);
-    if (takenNamespaces.has(namespace)) {
-      form.setError("namespaceSuffix", {
-        type: "manual",
-        message: "This namespace is already used by another service.",
-      });
-      return;
-    }
+    // The namespace itself is deliberately NOT checked for duplicates:
+    // a namespace is unique within its tenant and shared by as many
+    // services as need it.
 
     setDraft((current) => [...current, values]);
     form.reset(emptyService());
@@ -173,9 +203,9 @@ export function StageThreeForm({
     <div>
       <h3 className="text-sm font-medium">Services</h3>
       <p className="mt-1.5 mb-7 text-sm text-muted-foreground">
-        Add as many services as {application.applicationName} needs. Every
-        namespace is saved as {prefix}(free text), then the list is saved in
-        one go.
+        Add as many services as {application.applicationName} needs — several
+        may share a namespace. Every namespace is saved as {prefix}(free
+        text), then the list is saved in one go.
       </p>
 
       {savedServices.length > 0 && (
@@ -198,15 +228,49 @@ export function StageThreeForm({
               render={({ field }) => (
                 <FormItem className="grid gap-2">
                   <FormLabel>Namespace suffix</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="core"
-                      autoComplete="off"
-                      spellCheck={false}
-                      disabled={isSubmitting}
-                      {...field}
-                    />
-                  </FormControl>
+                  <div className="relative">
+                    <FormControl>
+                      <Input
+                        placeholder="core"
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={isSubmitting}
+                        {...field}
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={() => {
+                          field.onBlur();
+                          setShowSuggestions(false);
+                        }}
+                      />
+                    </FormControl>
+                    {showSuggestions && matchingSuggestions.length > 0 && (
+                      <ul
+                        aria-label="Existing namespaces"
+                        className="border-input bg-popover text-popover-foreground absolute inset-x-0 top-full z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border"
+                      >
+                        {matchingSuggestions.map((suggestion) => (
+                          <li key={suggestion.namespace}>
+                            <button
+                              type="button"
+                              // Keep focus on the input so blur cannot hide
+                              // the list before this click registers.
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => pickSuggestion(suggestion.suffix)}
+                              className="hover:bg-muted flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left transition-colors"
+                            >
+                              <span className="truncate font-mono text-[13px]">
+                                {suggestion.namespace}
+                              </span>
+                              <span className="text-muted-foreground shrink-0 text-xs">
+                                {suggestion.services} service
+                                {suggestion.services === 1 ? "" : "s"}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                   <FormDescription>
                     {namespaceSuffix.trim().length > 0 ? (
                       <>
@@ -214,6 +278,11 @@ export function StageThreeForm({
                         <span className="text-foreground font-mono">
                           {namespaceFor(namespaceSuffix)}
                         </span>
+                      </>
+                    ) : suggestions.length > 0 ? (
+                      <>
+                        Type a suffix or pick an existing namespace — services
+                        can share one.
                       </>
                     ) : (
                       <>Free text — the namespace becomes {prefix}…</>

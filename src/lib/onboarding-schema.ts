@@ -5,7 +5,9 @@ import { z } from "zod";
  *  1. Application details — name, repository, tenant, total worker nodes.
  *  2. Worker nodes — one row per node reserved in stage 1.
  *  3. Services — a free-length list; every namespace follows the
- *     applicationname-tenant-(freetext) format.
+ *     applicationname-tenant-(freetext) format. A namespace is unique within
+ *     its tenant (the name embeds tenant) but any number of services may
+ *     share it, and existing namespaces are offered back as suggestions.
  *
  * Numeric fields stay strings inside forms so partial input never becomes a
  * number, and are converted right before a mutation runs.
@@ -65,6 +67,61 @@ export function namespaceSuffixOf(
 ): string {
   const prefix = `${namespacePart(applicationName)}-${tenant.toLowerCase()}-`;
   return namespace.startsWith(prefix) ? namespace.slice(prefix.length) : namespace;
+}
+
+/** An already-used namespace the stage 3 form can offer for reuse. */
+export type NamespaceSuggestion = {
+  /** The full stored namespace, applicationname-tenant-(freetext). */
+  namespace: string;
+  /** Its free-text suffix — what the form field holds. */
+  suffix: string;
+  /** How many services in the list already use it. */
+  services: number;
+};
+
+/**
+ * Distinct namespaces already in use (saved services plus draft rows),
+ * oldest names first with a usage count, so a new service can reuse one
+ * instead of inventing another. Namespaces are tenant-scoped entities that
+ * many services may share, so nothing here is exclusive.
+ */
+export function namespaceSuggestions(
+  context: Pick<ServiceContext, "applicationName" | "tenant">,
+  namespaces: string[],
+): NamespaceSuggestion[] {
+  const counts = new Map<string, number>();
+  for (const namespace of namespaces) {
+    counts.set(namespace, (counts.get(namespace) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([namespace, services]) => ({
+      namespace,
+      suffix: namespaceSuffixOf(
+        context.applicationName,
+        context.tenant,
+        namespace,
+      ),
+      services,
+    }))
+    .sort((a, b) => a.namespace.localeCompare(b.namespace));
+}
+
+/**
+ * Suggestions matching what has been typed so far — the query is normalised
+ * like any namespace fragment ("Core API" matches suffix "api-v2" style
+ * input, e.g. "core-api"). An empty query keeps every suggestion.
+ */
+export function filterNamespaceSuggestions(
+  suggestions: NamespaceSuggestion[],
+  query: string,
+): NamespaceSuggestion[] {
+  const needle = namespacePart(query);
+  if (needle.length === 0) return suggestions;
+  return suggestions.filter(
+    (suggestion) =>
+      suggestion.suffix.includes(needle) ||
+      suggestion.namespace.includes(needle),
+  );
 }
 
 /* ------------------------------------------------------------------ stage 1 */
@@ -250,8 +307,10 @@ export function servicesSchema(context: ServiceContext) {
         return;
       }
 
+      // Service names stay unique inside one application's list, but
+      // namespaces do not: a namespace belongs to its tenant and is reused
+      // freely, so several services may resolve to the same one.
       const names = new Set<string>();
-      const namespaces = new Set<string>();
       values.services.forEach((service, index) => {
         if (names.has(service.serviceName)) {
           ctx.addIssue({
@@ -261,20 +320,6 @@ export function servicesSchema(context: ServiceContext) {
           });
         }
         names.add(service.serviceName);
-
-        const namespace = buildNamespace(
-          context.applicationName,
-          context.tenant,
-          service.namespaceSuffix,
-        );
-        if (namespaces.has(namespace)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["services", index, "namespaceSuffix"],
-            message: "This namespace is already used by another service.",
-          });
-        }
-        namespaces.add(namespace);
       });
     });
 }

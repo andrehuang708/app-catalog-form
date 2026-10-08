@@ -148,6 +148,9 @@ describe("stage 3 — services form", () => {
     expect(html).toContain("1 service already saved");
     expect(html).toContain("1 in the list");
     expect(html).toContain("billing-api-fund-core");
+    // Existing namespaces are offered for reuse instead of forcing a new one.
+    expect(html).toContain("pick an existing namespace");
+    expect(html).toContain("several may share a namespace");
     expect(html).toContain("https://billing.internal/healthz");
     expect(html).toContain("Saved · stage 3");
     expect(html).not.toContain("Back to worker nodes");

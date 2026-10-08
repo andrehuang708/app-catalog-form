@@ -1,4 +1,8 @@
+.env
 .env.local
 node_modules
 dist
 src/convex/_generated
+.freebuff/
+# Freebuff project export artifacts (the zip bundles a .env.local)
+public/freebuff-export.*

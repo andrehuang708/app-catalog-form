@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildNamespace,
+  filterNamespaceSuggestions,
+  namespaceSuggestions,
   namespaceSuffixOf,
   serviceSchema,
   servicesSchema,
@@ -320,21 +322,72 @@ describe("stage 3 — services", () => {
     expect(stageThreeMessages([validService])).toEqual([]);
   });
 
-  it("rejects duplicate service names and namespaces in the list", () => {
+  it("rejects duplicate service names in the list", () => {
     expect(
       stageThreeMessages([validService, { ...validService }]),
     ).toContain("This service name is already in the list.");
     expect(
       stageThreeMessages([
         validService,
-        { ...validService, serviceName: "other-service" },
-      ]),
-    ).toContain("This namespace is already used by another service.");
-    expect(
-      stageThreeMessages([
-        validService,
         { ...validService, serviceName: "other-service", namespaceSuffix: "web" },
       ]),
     ).toEqual([]);
+  });
+
+  it("lets several services share one namespace", () => {
+    // Same suffix → same namespace for a different service: allowed,
+    // because a namespace is unique per tenant but reusable.
+    expect(
+      stageThreeMessages([
+        validService,
+        { ...validService, serviceName: "other-service" },
+      ]),
+    ).toEqual([]);
+    expect(
+      servicesSchema(context).safeParse({
+        services: [
+          validService,
+          { ...validService, serviceName: "second" },
+          { ...validService, serviceName: "third" },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("namespace reuse suggestions", () => {
+  it("lists each existing namespace once with its usage count", () => {
+    expect(
+      namespaceSuggestions(context, [
+        "billing-api-fund-core",
+        "billing-api-fund-web",
+        "billing-api-fund-core",
+      ]),
+    ).toEqual([
+      { namespace: "billing-api-fund-core", suffix: "core", services: 2 },
+      { namespace: "billing-api-fund-web", suffix: "web", services: 1 },
+    ]);
+  });
+
+  it("returns nothing when no namespace is in use yet", () => {
+    expect(namespaceSuggestions(context, [])).toEqual([]);
+  });
+
+  it("filters suggestions by typed suffix, full namespace, or prefix", () => {
+    const suggestions = namespaceSuggestions(context, [
+      "billing-api-fund-core",
+      "billing-api-fund-web",
+    ]);
+    expect(filterNamespaceSuggestions(suggestions, "")).toHaveLength(2);
+    expect(filterNamespaceSuggestions(suggestions, "web").map((s) => s.suffix)).toEqual([
+      "web",
+    ]);
+    expect(
+      filterNamespaceSuggestions(suggestions, "billing-api-fund").length,
+    ).toBe(2);
+    expect(
+      filterNamespaceSuggestions(suggestions, "CORE").map((s) => s.suffix),
+    ).toEqual(["core"]);
+    expect(filterNamespaceSuggestions(suggestions, "nope")).toEqual([]);
   });
 });
