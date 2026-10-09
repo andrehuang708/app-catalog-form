@@ -9,7 +9,7 @@ This project uses the following tech stack:
 - Shadcn UI (for UI components library)
 - Lucide Icons (for icons)
 - Convex (for backend & database)
-- Convex Auth (for authentication)
+- Postgres-backed authentication (scrypt password hashes + session tokens)
 - Framer Motion (for animations)
 - Three js (for 3d models)
 
@@ -27,7 +27,8 @@ The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_UR
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 
-Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
+Currently, the backend needs `DATABASE_URL` — the Postgres connection string
+that holds both the accounts (`users` / `sessions`) and the onboarding data.
 
 
 # Using Authentication (Important!)
@@ -36,17 +37,37 @@ You must follow these conventions when using authentication.
 
 ## Auth is already set up.
 
-All convex authentication functions are already set up. The auth currently uses email OTP and anonymous users, but can support more.
+Authentication is entirely Postgres-backed — there is no Convex Auth provider,
+no email OTP, and no third-party issuer. Accounts are rows in the `users`
+table, passwords are stored as scrypt hashes (`src/convex/password.ts`), and a
+signed-in browser holds a bearer token that maps to one row of `sessions`
+(only the token's sha256 is stored).
 
-The email OTP configuration is defined in `src/convex/auth/emailOtp.ts`. DO NOT MODIFY THIS FILE.
+The whole of sign-in lives in `src/convex/auth.ts`: `setupState` (is this an
+empty install?), `bootstrap` (create the first, admin account), `signIn`
+(user ID **or** email + password), `currentUser`, `signOut`, and the
+account-administration actions (`listUsers`, `createUser`, `revokeUser`,
+`restoreUser`).
 
-Also, DO NOT MODIFY THESE AUTH FILES: `src/convex/auth.config.ts` and `src/convex/auth.ts`.
+## Using auth on the backend
 
-## Using Convex Auth on the backend
+Every protected action resolves its caller's `sessionToken` against the
+`sessions` table before touching data. Use `sessionUser` from
+`src/convex/auth.ts`, or copy the `requireSignedIn` helper in
+`src/convex/onboarding.ts`:
 
-On the `src/convex/users.ts` file, you can use the `getCurrentUser` function to get the current user's data.
+```ts
+import { sessionUser } from "./auth";
 
-## Using Convex Auth on the frontend
+const user = await sessionUser(args.sessionToken);
+if (user === null) throw new ConvexError("Your session has expired. Sign in again to continue.");
+```
+
+`sessionUser` returns `null` for unknown, expired, or **revoked** accounts, and
+the user carries `isAdmin` for role checks. Account-administration actions must
+gate on it (see `requireAdmin` in `src/convex/auth.ts`).
+
+## Using auth on the frontend
 
 The `/auth` page is already set up to use auth. Navigate to `/auth` for all log in / sign up sequences.
 
@@ -55,6 +76,17 @@ You MUST use this hook to get user data. Never do this yourself without the hook
 import { useAuth } from "@/hooks/use-auth";
 
 const { isLoading, isAuthenticated, user, signIn, signOut } = useAuth();
+```
+
+For Convex actions that need the session token (everything in
+`src/convex/onboarding.ts` and the account-admin actions), use
+`useAuthedAction` — it injects the token so pages never handle it:
+
+```typescript
+import { useAuthedAction } from "@/hooks/use-authed-action";
+
+const listTenants = useAuthedAction(api.onboarding.listTenants);
+const rows = await listTenants(); // no sessionToken argument
 ```
 
 ## Protected Routes
@@ -87,16 +119,22 @@ is better.
 
 ## Auth Page
 
-The auth page is defined in `src/pages/Auth.tsx`. Send sign-in and sign-up actions
-to `/auth`.
+The auth page is defined in `src/pages/Auth.tsx`. Send sign-in and first-run
+account-creation actions to `/auth`. It shows the sign-in form normally, and
+swaps to the "create the first account" form only while the `users` table is
+empty.
 
 ## Authorization
 
 You can perform authorization checks on the frontend and backend.
 
-On the frontend, you can use the `useAuth` hook to get the current user's data and authentication state.
+On the frontend, use the `useAuth` hook: `user.isAdmin` gates the Users page
+and the sidebar's Users entry (the server rejects non-admins regardless).
 
-You should also be protecting queries, mutations, and actions at the base level, checking for authorization securely.
+On the backend, protect every action at its base level — resolve the session
+first (see "Using auth on the backend"), and check roles before reads or
+writes. The account-administration actions in `src/convex/auth.ts` show the
+pattern.
 
 ## Adding a redirect after auth
 

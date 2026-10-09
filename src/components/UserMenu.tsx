@@ -88,7 +88,7 @@ export function UserMenu({ compact = false }: { compact?: boolean } = {}) {
           onSelect={() => navigate("/")}
         >
           <Home className="mr-2 h-4 w-4" />
-          Landing page
+          Dashboard
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

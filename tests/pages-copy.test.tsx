@@ -8,6 +8,7 @@ import AuthPage from "../src/pages/Auth";
 import Dashboard from "../src/pages/Dashboard";
 import Landing from "../src/pages/Landing";
 import OnboardingPage from "../src/pages/OnboardingPage";
+import UsersPage from "../src/pages/UsersPage";
 
 const client = new ConvexReactClient("https://example.convex.cloud");
 
@@ -126,6 +127,25 @@ describe("request onboarding page", () => {
   });
 });
 
+describe("users page (admin)", () => {
+  const html = renderToString(
+    <ConvexProvider client={client}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/users"]}>
+          <UsersPage />
+        </MemoryRouter>
+      </AuthProvider>
+    </ConvexProvider>,
+  );
+
+  it("shows the admin-access guard when signed out or non-admin", () => {
+    // The default useAuth context is signed out: user is null, so the page
+    // renders the guard instead of the account table.
+    expect(html).toContain("Administrator access required");
+    expect(html).not.toContain("Add user");
+  });
+});
+
 describe("auth page", () => {
   const html = renderToString(
     <ConvexProvider client={client}>
@@ -181,5 +201,11 @@ describe("app shell files", () => {
     expect(main).toMatch(
       /<Route\s+path="\/auth"\s+element=\{<AuthPage redirectAfterAuth="\/dashboard"\s*\/>\s*\}\s*\/>/,
     );
+  });
+
+  it("routes /users to the account administration page", () => {
+    const main = fromRoot("src/main.tsx");
+    expect(main).toContain('path="/users"');
+    expect(main).toContain("./pages/UsersPage.tsx");
   });
 });

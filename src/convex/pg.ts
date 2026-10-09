@@ -110,8 +110,25 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE,
   name TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
-  created_at BIGINT NOT NULL
+  created_at BIGINT NOT NULL,
+  revoked_at BIGINT,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+-- Databases created before the admin Users page existed predate these columns.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS revoked_at BIGINT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- One-time-style backfill: on a database created before roles existed, the
+-- oldest account is the one bootstrap created, so it becomes the first
+-- admin. Guarded so it never re-promotes anyone once an active admin exists
+-- (running on every process start is therefore safe).
+UPDATE users SET is_admin = TRUE
+ WHERE id = (SELECT id FROM users
+              WHERE revoked_at IS NULL
+              ORDER BY created_at ASC, id ASC LIMIT 1)
+   AND NOT EXISTS (SELECT 1 FROM users
+                    WHERE is_admin = TRUE AND revoked_at IS NULL);
 
 -- One row per signed-in browser. The id column is the sha256 of the bearer
 -- token, so a leaked database still cannot be replayed as a live session.

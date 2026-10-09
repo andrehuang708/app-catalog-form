@@ -73,18 +73,30 @@ export function verifyPassword(password: string, stored: string): boolean {
   } catch {
     return false;
   }
+  // A zero-length digest would make scrypt derive a 0-byte key, which throws
+  // ("keylen" must be positive) — a corrupted row must fail, not crash.
+  if (expected.length === 0) return false;
 
-  const actual = scryptSync(
-    password,
-    Buffer.from(rawSalt, "base64"),
-    expected.length,
-    {
-      N,
-      r,
-      p,
-    },
-  );
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+  try {
+    const actual = scryptSync(
+      password,
+      Buffer.from(rawSalt, "base64"),
+      expected.length,
+      {
+        N,
+        r,
+        p,
+      },
+    );
+    return (
+      actual.length === expected.length && timingSafeEqual(actual, expected)
+    );
+  } catch {
+    // Parameter bounds above still allow 128·N·r past Node's 32 MB maxmem
+    // (e.g. N = 2²², r = 32); scryptSync rejects those with a RangeError.
+    // A hash we cannot compute is a hash that simply does not match.
+    return false;
+  }
 }
 
 /** A 256-bit bearer token handed to the browser after a successful sign-in. */

@@ -9,6 +9,8 @@ export type AuthUser = {
   name: string;
   email: string | null;
   createdAt: number;
+  /** True for accounts allowed to manage users (see src/convex/auth.ts). */
+  isAdmin: boolean;
 };
 
 export type AuthContextValue = {

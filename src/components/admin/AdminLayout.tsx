@@ -16,6 +16,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Boxes,
   Building2,
@@ -24,6 +25,7 @@ import {
   Home,
   LayoutGrid,
   Server,
+  Users,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
@@ -33,6 +35,8 @@ const NAV_ITEMS: Array<{
   to: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  /** Only rendered for administrators (the server enforces it too). */
+  adminOnly?: boolean;
 }> = [
   { to: "/dashboard", label: "Home", icon: Home },
   { to: "/onboarding", label: "Request Onboarding", icon: FilePlus2 },
@@ -41,6 +45,7 @@ const NAV_ITEMS: Array<{
   { to: "/services", label: "Service", icon: Server },
   { to: "/worker-nodes", label: "Worker Nodes", icon: HardDrive },
   { to: "/tenants", label: "Tenant", icon: Building2 },
+  { to: "/users", label: "Users", icon: Users, adminOnly: true },
 ];
 
 /**
@@ -50,13 +55,18 @@ const NAV_ITEMS: Array<{
  */
 export function AdminLayout() {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.adminOnly || user?.isAdmin,
+  );
 
   const isHome =
     location.pathname === "/" || location.pathname === "/dashboard";
   const activeLabel =
     (isHome
-      ? NAV_ITEMS.find((item) => item.to === "/dashboard")
-      : NAV_ITEMS.find((item) => item.to === location.pathname)
+      ? visibleItems.find((item) => item.to === "/dashboard")
+      : visibleItems.find((item) => item.to === location.pathname)
     )?.label ?? "Dashboard";
 
   return (
@@ -86,7 +96,7 @@ export function AdminLayout() {
           <SidebarGroup>
             <SidebarGroupLabel>Management</SidebarGroupLabel>
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
+              {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.to}>
                   <SidebarMenuButton
                     asChild

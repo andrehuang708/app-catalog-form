@@ -34,6 +34,7 @@ export type AuthUser = {
   name: string;
   email: string | null;
   createdAt: number;
+  isAdmin: boolean;
 };
 
 type UserDbRow = {
@@ -42,6 +43,8 @@ type UserDbRow = {
   name: string;
   password_hash: string;
   created_at: number;
+  revoked_at: number | null;
+  is_admin: boolean;
 };
 
 function toUser(row: UserDbRow): AuthUser {
@@ -50,8 +53,34 @@ function toUser(row: UserDbRow): AuthUser {
     name: row.name,
     email: row.email,
     createdAt: Number(row.created_at),
+    isAdmin: row.is_admin,
   };
 }
+
+/** The public account shape the Users page renders (no password hash). */
+type AdminUser = {
+  id: string;
+  name: string;
+  email: string | null;
+  createdAt: number;
+  isAdmin: boolean;
+  revokedAt: number | null;
+};
+
+function toAdminUser(row: UserDbRow): AdminUser {
+  return {
+    ...toUser(row),
+    revokedAt: row.revoked_at === null ? null : Number(row.revoked_at),
+  };
+}
+
+/**
+ * A real scrypt hash of a fixed unknown string: when no account matches the
+ * identifier, signIn still runs one full verify against this so the work
+ * (and therefore the response time) is identical to the wrong-password path.
+ */
+const DUMMY_HASH =
+  "scrypt$16384$8$1$sbtYIQXonWJpsplwXEI0Cg==$6Pdddjir3qhLqelzidCInuaooD0T/B4EeLZPkFGIW9Q/fbSnbb4mdRgW9M36amMxgmjVIKDqY+V40IQbEnDASQ==";
 
 /* ------------------------------------------------------------- validation */
 
@@ -84,8 +113,10 @@ function checkPassword(password: string): string {
 
 /**
  * Resolves a bearer token to the signed-in user, or null when the session is
- * unknown or expired. Every gated action funnels through here, so the token is
- * validated in SQL rather than trusted from the request.
+ * unknown, expired, or belongs to a revoked account. Every gated action
+ * funnels through here, so the token is validated in SQL rather than trusted
+ * from the request — revoking a user ends their access even if a session row
+ * outlives the revocation.
  */
 export async function sessionUser(
   sessionToken: string,
@@ -94,10 +125,28 @@ export async function sessionUser(
   const rows = await queryRows<UserDbRow>(
     `SELECT u.* FROM sessions s
        JOIN users u ON u.id = s.user_id
-      WHERE s.id = $1 AND s.expires_at > $2`,
+      WHERE s.id = $1 AND s.expires_at > $2 AND u.revoked_at IS NULL`,
     [hashSessionToken(sessionToken), Date.now()],
   );
   return rows.length === 0 ? null : toUser(rows[0]);
+}
+
+/**
+ * The gate in front of every account-administration action: a live session,
+ * and the admin role. ConvexError so the browser shows this sentence rather
+ * than an opaque "Server Error".
+ */
+async function requireAdmin(sessionToken: string): Promise<AuthUser> {
+  const user = await sessionUser(sessionToken);
+  if (user === null)
+    throw new ConvexError(
+      "Your session has expired. Sign in again to continue.",
+    );
+  if (!user.isAdmin)
+    throw new ConvexError(
+      "You need administrator access to manage users.",
+    );
+  return user;
 }
 
 /** Issues a fresh session for a user and returns the token for the browser. */
@@ -151,18 +200,22 @@ export const bootstrap = action({
     password: v.string(),
   },
   handler: async (_ctx, args) => {
-    const existing = await queryRows<{ count: number }>(
-      "SELECT COUNT(*)::int AS count FROM users",
-    );
-    if (existing[0].count > 0)
-      reject("This install already has an account — sign in instead.");
-
     const id = normalizeUserId(args.userId);
     const email = normalizeEmail(args.email);
     const password = checkPassword(args.password);
     const name = args.name.trim();
 
     return await withTransaction(async (client) => {
+      // The empty-install check lives inside the transaction, serialized by a
+      // session-level advisory lock: without it two concurrent first-run
+      // submissions could both see zero rows and both create a "first" admin.
+      await client.query("SELECT pg_advisory_xact_lock($1)", [187_431]);
+      const existing = await client.query(
+        "SELECT COUNT(*)::int AS count FROM users",
+      );
+      if ((existing.rows[0] as { count: number }).count > 0)
+        reject("This install already has an account — sign in instead.");
+
       const clash = await client.query(
         "SELECT 1 FROM users WHERE id = $1 OR lower(email) = lower($2)",
         [id, email],
@@ -170,9 +223,10 @@ export const bootstrap = action({
       if (clash.rows.length > 0)
         reject("That user ID or email is already taken.");
 
+      // The first account is the install's administrator.
       const created = await client.query(
-        `INSERT INTO users (id, email, name, password_hash, created_at)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        `INSERT INTO users (id, email, name, password_hash, created_at, is_admin)
+         VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING *`,
         [id, email, name, hashPassword(password), Date.now()],
       );
       const user = toUser(created.rows[0] as UserDbRow);
@@ -195,8 +249,19 @@ export const signIn = action({
 
     const user = await findUser(identifier);
     const badPassword = "That user ID/email and password combination is wrong.";
-    if (!user || !verifyPassword(args.password, user.password_hash))
-      reject(badPassword);
+    // Always run one scrypt verify — on the dummy hash when no account
+    // matches — so response time cannot be used to discover which accounts
+    // exist, exactly as the uniform message promises.
+    const hash = user?.password_hash ?? DUMMY_HASH;
+    const passwordOk = verifyPassword(args.password, hash);
+    if (!user || !passwordOk) reject(badPassword);
+
+    // Rejected only after the password proved the caller owns the account,
+    // so "revoked" is never a free signal that the account exists.
+    if (user.revoked_at !== null)
+      reject(
+        "This account has been revoked. Ask an administrator to restore it.",
+      );
 
     return await withTransaction(async (client) => {
       // Drop this account's expired rows so the table cannot grow forever.
@@ -224,5 +289,122 @@ export const signOut = action({
     await queryRows("DELETE FROM sessions WHERE id = $1", [
       hashSessionToken(args.sessionToken),
     ]);
+  },
+});
+
+/* ------------------------------------------------------- account admin */
+
+/**
+ * Every account, newest first — the Users page's table. Admin-only; the
+ * password hash never leaves the server.
+ */
+export const listUsers = action({
+  args: { sessionToken: v.string() },
+  handler: async (_ctx, args): Promise<AdminUser[]> => {
+    await requireAdmin(args.sessionToken);
+    const rows = await queryRows<UserDbRow>(
+      "SELECT * FROM users ORDER BY created_at DESC, id ASC",
+    );
+    return rows.map(toAdminUser);
+  },
+});
+
+/**
+ * Creates an account from the admin Users page. Unlike `bootstrap` this never
+ * opens a session for the new user — they sign in themselves with the
+ * password set here.
+ */
+export const createUser = action({
+  args: {
+    userId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    password: v.string(),
+    isAdmin: v.boolean(),
+    sessionToken: v.string(),
+  },
+  handler: async (_ctx, args): Promise<AdminUser> => {
+    await requireAdmin(args.sessionToken);
+
+    const id = normalizeUserId(args.userId);
+    const email = normalizeEmail(args.email);
+    const password = checkPassword(args.password);
+    const name = args.name.trim();
+
+    return await withTransaction(async (client) => {
+      const clash = await client.query(
+        "SELECT 1 FROM users WHERE id = $1 OR lower(email) = lower($2)",
+        [id, email],
+      );
+      if (clash.rows.length > 0)
+        reject("That user ID or email is already taken.");
+
+      const created = await client.query(
+        `INSERT INTO users (id, email, name, password_hash, created_at, is_admin)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [id, email, name, hashPassword(password), Date.now(), args.isAdmin],
+      );
+      return toAdminUser(created.rows[0] as UserDbRow);
+    });
+  },
+});
+
+/**
+ * Revokes an account: stamps `revoked_at` and deletes every session in the
+ * same transaction, so the user is signed out everywhere at once. The actor
+ * cannot revoke themselves — an admin locking themselves out is never the
+ * intended outcome, and it guarantees at least one active admin survives.
+ */
+export const revokeUser = action({
+  args: { userId: v.string(), sessionToken: v.string() },
+  handler: async (_ctx, args): Promise<AdminUser> => {
+    const actor = await requireAdmin(args.sessionToken);
+    if (actor.id === args.userId)
+      reject("You can't revoke your own account.");
+
+    return await withTransaction(async (client) => {
+      const rows = await client.query<UserDbRow>(
+        "SELECT * FROM users WHERE id = $1",
+        [args.userId],
+      );
+      const target = rows.rows[0];
+      if (!target) reject("That account no longer exists.");
+      if (target.revoked_at !== null)
+        reject("That account is already revoked.");
+
+      await client.query(
+        "UPDATE users SET revoked_at = $2 WHERE id = $1",
+        [args.userId, Date.now()],
+      );
+      await client.query("DELETE FROM sessions WHERE user_id = $1", [
+        args.userId,
+      ]);
+      return toAdminUser({ ...target, revoked_at: Date.now() });
+    });
+  },
+});
+
+/** Brings a revoked account back — clears `revoked_at`; sign-in works again. */
+export const restoreUser = action({
+  args: { userId: v.string(), sessionToken: v.string() },
+  handler: async (_ctx, args): Promise<AdminUser> => {
+    await requireAdmin(args.sessionToken);
+
+    return await withTransaction(async (client) => {
+      const rows = await client.query<UserDbRow>(
+        "SELECT * FROM users WHERE id = $1",
+        [args.userId],
+      );
+      const target = rows.rows[0];
+      if (!target) reject("That account no longer exists.");
+      if (target.revoked_at === null)
+        reject("That account isn't revoked.");
+
+      await client.query(
+        "UPDATE users SET revoked_at = NULL WHERE id = $1",
+        [args.userId],
+      );
+      return toAdminUser({ ...target, revoked_at: null });
+    });
   },
 });
