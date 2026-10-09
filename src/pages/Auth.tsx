@@ -14,7 +14,6 @@ import logo from "@/assets/logo.svg";
 import { ArrowRight, Loader2, UserPlus } from "lucide-react";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { ConvexError } from "convex/values";
 
 interface AuthProps {
   redirectAfterAuth?: string;
@@ -32,12 +31,10 @@ function resolveRedirectAfterAuth(
 
 /**
  * Surfaces the sentence the server actually meant to say. Sign-in failures
- * arrive as a ConvexError carrying the message verbatim; anything else is
+ * arrive as an Error carrying the message verbatim; anything else is
  * replaced by a fallback rather than leaking an internal error to the form.
  */
 function messageOf(error: unknown, fallback: string): string {
-  if (error instanceof ConvexError && typeof error.data === "string")
-    return error.data;
   if (
     error instanceof Error &&
     error.message &&

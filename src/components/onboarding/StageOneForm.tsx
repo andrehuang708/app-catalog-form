@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import {
   TENANTS,
   stageOneSchemaFor,
@@ -54,7 +54,7 @@ export function StageOneForm({ application, onSaved }: Props) {
   const [tenants, setTenants] = useState<string[]>([...TENANTS]);
   useEffect(() => {
     let cancelled = false;
-    fetchTenants({})
+    fetchTenants()
       .then((rows) => {
         if (!cancelled && rows.length > 0)
           setTenants(rows.map((row) => row.name));

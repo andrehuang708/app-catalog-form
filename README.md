@@ -8,7 +8,8 @@ This project uses the following tech stack:
 - Tailwind v4 (for styling)
 - Shadcn UI (for UI components library)
 - Lucide Icons (for icons)
-- Convex (for backend & database)
+- Hono + Bun (API server, serves the built Vite bundle too)
+- PostgreSQL (the only database: onboarding data + accounts)
 - Postgres-backed authentication (scrypt password hashes + session tokens)
 - Framer Motion (for animations)
 - Three js (for 3d models)
@@ -19,16 +20,77 @@ Use bun for the package manager.
 
 ## Setup
 
-This project is set up already and running on a cloud environment, as well as a convex development in the sandbox.
+The app is one Bun process: it serves the API under `/api/*` and the built
+Vite bundle from `dist/` (see `src/server/index.ts`), with Postgres as the
+only external dependency — no Convex, no outbound network at runtime, which
+makes it directly deployable in an air-gapped Docker environment.
+
+```bash
+bun install
+bun run build      # tsc -b && vite build → dist/
+bun start          # API + static server on :8080
+```
+
+For local frontend work run `bun run dev` (Vite on :5173) next to
+`bun start` — Vite proxies `/api` to :8080 so the app stays same-origin.
 
 ## Environment Variables
 
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side.
+The server reads two variables (see `.env.example`):
 
-The convex server has a separate set of environment variables that are accessible by the convex backend.
+- `DATABASE_URL` — the Postgres connection string holding both the accounts
+  (`users` / `sessions`) and the onboarding data. TLS is decided by the
+  `sslmode` parameter on this URL.
+- `PORT` — the listen port (default 8080).
 
-Currently, the backend needs `DATABASE_URL` — the Postgres connection string
-that holds both the accounts (`users` / `sessions`) and the onboarding data.
+## Docker (air-gapped deployment)
+
+The app ships as two separate images — the app image and a stock Postgres
+image — wired together by `docker-compose.yml`:
+
+```bash
+docker compose up -d
+```
+
+- `app` builds from `Dockerfile` (multi-stage: `bun install` + `vite build`,
+  then a slim runtime that runs `bun src/server/index.ts`). It waits for the
+  database healthcheck, creates its schema idempotently on first start, and
+  serves everything on port 8080.
+- `db` is the official `postgres:17-alpine` image with its data in a named
+  volume — a completely separate container/image, as requested.
+
+For an air-gapped host, build and transfer the images once from a connected
+machine:
+
+```bash
+docker compose build
+docker save kube-onboarding-app | gzip > app.tar.gz   # app image
+docker save postgres:17-alpine | gzip > db.tar.gz      # db image
+# on the air-gapped host:
+gunzip -c app.tar.gz | docker load
+gunzip -c db.tar.gz | docker load
+docker compose up -d
+```
+
+## Seeding demo data
+
+`bun run seed` fills the database with demo content: two accounts
+(`admin@example.com` / `Password123!` as Administrator, `demo@example.com` /
+`Password123!` as Member), four applications covering every status the
+Applications list renders (Complete, Services needed, Worker nodes needed,
+Worker nodes out of sync), plus their worker nodes and services.
+
+It is idempotent — rows with `seed-…` ids that already exist are skipped, and
+existing accounts are never overwritten (an existing account keeps its old
+password; the script prints what actually applies). To wipe only the seed
+rows and start fresh:
+
+```bash
+bun run seed:reset
+```
+
+The fixtures live in `scripts/seed.ts` and are validated against the real
+onboarding zod schemas by `tests/seed.test.ts`.
 
 
 # Using Authentication (Important!)
@@ -37,35 +99,38 @@ You must follow these conventions when using authentication.
 
 ## Auth is already set up.
 
-Authentication is entirely Postgres-backed — there is no Convex Auth provider,
-no email OTP, and no third-party issuer. Accounts are rows in the `users`
-table, passwords are stored as scrypt hashes (`src/convex/password.ts`), and a
+Authentication is entirely Postgres-backed — there is no third-party issuer,
+no email OTP, and no hosted backend. Accounts are rows in the `users`
+table, passwords are stored as scrypt hashes (`src/server/password.ts`), and a
 signed-in browser holds a bearer token that maps to one row of `sessions`
 (only the token's sha256 is stored).
 
-The whole of sign-in lives in `src/convex/auth.ts`: `setupState` (is this an
+The whole of sign-in lives in `src/server/auth.ts`: `setupState` (is this an
 empty install?), `bootstrap` (create the first, admin account), `signIn`
 (user ID **or** email + password), `currentUser`, `signOut`, and the
-account-administration actions (`listUsers`, `createUser`, `revokeUser`,
-`restoreUser`).
+account-administration handlers (`listUsers`, `createUser`, `revokeUser`,
+`restoreUser`). They are exposed over HTTP by the whitelist in
+`src/server/http.ts` (`POST /api/<module>/<function>`).
 
 ## Using auth on the backend
 
-Every protected action resolves its caller's `sessionToken` against the
+Every protected handler resolves its caller's `sessionToken` against the
 `sessions` table before touching data. Use `sessionUser` from
-`src/convex/auth.ts`, or copy the `requireSignedIn` helper in
-`src/convex/onboarding.ts`:
+`src/server/auth.ts`, or copy the `requireSignedIn` helper in
+`src/server/onboarding.ts`:
 
 ```ts
 import { sessionUser } from "./auth";
+import { reject } from "./errors";
 
 const user = await sessionUser(args.sessionToken);
-if (user === null) throw new ConvexError("Your session has expired. Sign in again to continue.");
+if (user === null) reject("Your session has expired. Sign in again to continue.", 401);
 ```
 
 `sessionUser` returns `null` for unknown, expired, or **revoked** accounts, and
-the user carries `isAdmin` for role checks. Account-administration actions must
-gate on it (see `requireAdmin` in `src/convex/auth.ts`).
+the user carries `isAdmin` for role checks. Account-administration handlers must
+gate on it (see `requireAdmin` in `src/server/auth.ts`). Throw `ApiError`
+(`src/server/errors.ts`) for any message the UI should show verbatim.
 
 ## Using auth on the frontend
 
@@ -78,9 +143,9 @@ import { useAuth } from "@/hooks/use-auth";
 const { isLoading, isAuthenticated, user, signIn, signOut } = useAuth();
 ```
 
-For Convex actions that need the session token (everything in
-`src/convex/onboarding.ts` and the account-admin actions), use
-`useAuthedAction` — it injects the token so pages never handle it:
+For API calls (everything in `src/api`), pages get their functions through
+`useAuthedAction` — the fetch client attaches the bearer token from
+localStorage, so pages never handle it:
 
 ```typescript
 import { useAuthedAction } from "@/hooks/use-authed-action";
@@ -131,9 +196,9 @@ You can perform authorization checks on the frontend and backend.
 On the frontend, use the `useAuth` hook: `user.isAdmin` gates the Users page
 and the sidebar's Users entry (the server rejects non-admins regardless).
 
-On the backend, protect every action at its base level — resolve the session
+On the backend, protect every handler at its base level — resolve the session
 first (see "Using auth on the backend"), and check roles before reads or
-writes. The account-administration actions in `src/convex/auth.ts` show the
+writes. The account-administration handlers in `src/server/auth.ts` show the
 pattern.
 
 ## Adding a redirect after auth
@@ -275,57 +340,53 @@ Always ensure your larger dialogs have a scroll in its content to ensure that it
 
 Ideally, instead of using a new page, use a Dialog instead. 
 
-# Using the Convex backend
+# Using the backend (Hono + Postgres)
 
-You will be implementing the convex backend. Follow your knowledge of convex and the documentation to implement the backend.
+There is no Convex anymore. The backend is plain TypeScript functions over
+Postgres, exposed through one Hono route.
 
-## The Convex Schema
+## The HTTP surface
 
-You must correctly follow the convex schema implementation.
+`src/server/http.ts` maps `POST /api/<module>/<function>` onto an explicit
+whitelist of handlers (`auth` and `onboarding` modules). The route:
 
-The schema is defined in `src/convex/schema.ts`.
+1. rejects anything not in the whitelist with a 404,
+2. parses the JSON body,
+3. injects `sessionToken` from the `Authorization: Bearer …` header,
+4. returns the handler's value as JSON — or `{ "error": "…" }` with the
+   `ApiError` status so the UI can show the sentence verbatim.
 
-Do not include the `_id` and `_creationTime` fields in your queries (it is included by default for each table).
-Do not index `_creationTime` as it is indexed for you. Never have duplicate indexes.
+Anything not under `/api` is served from `dist/` (the Vite build) with an
+SPA fallback to `index.html`.
 
+## Adding a new endpoint
 
-## Convex Actions: Using CRUD operations
+1. Write the handler in `src/server/onboarding.ts` (or a new module):
+   a plain `async function` taking one args object, validating with the zod
+   schemas in `src/lib/onboarding-schema.ts`, throwing `reject("message")`
+   for user-facing failures, and gating with `requireSignedIn` /
+   `requireAdmin` before touching data.
+2. Add it to the `endpoints` whitelist in `src/server/http.ts`.
+3. Expose it in `src/api/index.ts` (type it with `PublicArgs`/`Result` from
+   the handler so a signature change breaks the build).
+4. Call it from a page via `useAuthedAction(api.<module>.<fn>)`.
 
-When running anything that involves external connections, you must use a convex action with "use node" at the top of the file.
+## Database
 
-You cannot have queries or mutations in the same file as a "use node" action file. Thus, you must use pre-built queries and mutations in other files.
+All schema lives in the idempotent DDL in `src/server/pg.ts` — tables are
+created on first query, no migration step. `queryRows` runs parameterized
+statements; `withTransaction` gives COMMIT/ROLLBACK for multi-statement
+saves. Never build SQL by string concatenation — always pass values as
+`$1`, `$2`, … parameters.
 
-You can also use the pre-installed internal crud functions for the database:
+## Common mistakes to avoid
 
-```ts
-// in convex/users.ts
-import { crud } from "convex-helpers/server/crud";
-import schema from "./schema.ts";
-
-export const { create, read, update, destroy } = crud(schema, "users");
-
-// in some file, in an action:
-const user = await ctx.runQuery(internal.users.read, { id: userId });
-
-await ctx.runMutation(internal.users.update, {
-  id: userId,
-  patch: {
-    status: "inactive",
-  },
-});
-```
-
-
-## Common Convex Mistakes To Avoid
-
-When using convex, make sure:
-- Document IDs are referenced as `_id` field, not `id`.
-- Document ID types are referenced as `Id<"TableName">`, not `string`.
-- Document object types are referenced as `Doc<"TableName">`.
-- Keep schemaValidation to false in the schema file.
-- You must correctly type your code so that it passes the type checker.
-- You must handle null / undefined cases of your convex queries for both frontend and backend, or else it will throw an error that your data could be null or undefined.
-- Always use the `@/folder` path, with `@/convex/folder/file.ts` syntax for importing convex files.
-- This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
-- Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
-- NEVER have return type validators.
+- Never trust request bodies: re-validate everything with zod on the server,
+  even though the forms already validate client-side.
+- Never take an account id from the client — always resolve the caller with
+  `sessionUser`/`requireAdmin` and scope queries by that id.
+- Never return `password_hash` or raw session tokens from a handler.
+- Never add a new exported function to `src/server/*` without adding it to
+  the whitelist — and never whitelist something the pages should not reach.
+- Keep `/api` same-origin: do not add CORS; Vite proxies `/api` in dev and
+  the production server serves the UI itself.

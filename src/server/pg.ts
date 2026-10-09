@@ -1,16 +1,22 @@
-"use node";
-
 import { Pool, types, type PoolClient } from "pg";
 
 /**
  * PostgreSQL access for the onboarding data. All application data
- * (applications / worker_nodes / services) lives in Postgres; Convex keeps
- * authentication and hosts the Node actions in `onboarding.ts` that talk to
- * this database. Every access goes through the helpers below so each action
- * gets idempotent schema setup and real SQL transactions.
+ * (applications / worker_nodes / services) and the accounts (users /
+ * sessions) live in Postgres; this module is the only place that talks to
+ * it, so every request gets idempotent schema setup and real SQL
+ * transactions.
  *
- * The connection string comes from the DATABASE_URL environment variable
- * (set it in the project's Keys/API keys tab).
+ * The connection string comes from the DATABASE_URL environment variable —
+ * in Docker, docker-compose sets it to postgresql://…@db:5432/… and the
+ * healthchecked db container must come up first.
+ *
+ * SSL is decided by the `sslmode` query parameter on the URL, not by the
+ * hostname: the old host-based heuristic ("anything that isn't localhost
+ * needs TLS") broke plain-text Postgres inside a compose network, where the
+ * host is just `db`. Managed databases keep working by putting
+ * `sslmode=require` (or similar) in their URL; `sslmode=disable` — or no
+ * sslmode on a loopback host — stays unencrypted.
  */
 
 // Postgres bigint (OID 20) otherwise arrives as a string; our columns are
@@ -21,10 +27,30 @@ function connectionString(): string {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
-      "DATABASE_URL is not set. Add it under the project's Keys/API keys tab so the app can reach Postgres.",
+      "DATABASE_URL is not set. Set it in the environment (see .env.example) so the app can reach Postgres.",
     );
   }
   return url;
+}
+
+/**
+ * Maps the URL's sslmode onto a `pg` ssl option:
+ *
+ *   - disable / allow / prefer  → no TLS (compose, local Postgres),
+ *   - require / verify-ca / verify-full → TLS; verify modes also validate
+ *     the certificate chain against the default CAs,
+ *   - no sslmode                → TLS only for non-loopback hosts, without
+ *     certificate verification (the long-standing default for managed
+ *     Postgres whose URL never carried a mode).
+ */
+function sslOption(url: string): boolean | { rejectUnauthorized: boolean } {
+  const mode = url.match(/[?&]sslmode=([^&]+)/)?.[1]?.toLowerCase();
+  if (mode === "disable" || mode === "allow" || mode === "prefer") return false;
+  if (mode === "require") return { rejectUnauthorized: false };
+  if (mode === "verify-ca" || mode === "verify-full") return { rejectUnauthorized: true };
+  return /localhost|127\.0\.0\.1|\[::1\]/.test(url)
+    ? false
+    : { rejectUnauthorized: false };
 }
 
 let pool: Pool | undefined;
@@ -32,13 +58,10 @@ let pool: Pool | undefined;
 function getPool(): Pool {
   if (!pool) {
     const url = connectionString();
-    const local = /localhost|127\.0\.0\.1/.test(url);
     pool = new Pool({
       connectionString: url,
       max: 5,
-      // Managed Postgres (Neon, Tiger Cloud, …) requires TLS; local
-      // development instances usually do not.
-      ...(local ? {} : { ssl: { rejectUnauthorized: false } }),
+      ssl: sslOption(url),
     });
   }
   return pool;
@@ -102,9 +125,9 @@ CREATE INDEX IF NOT EXISTS applications_created_at_idx
 -- Existing databases still carry the old four-tenant CHECK constraint.
 ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_tenant_check;
 
--- Accounts live here, not in Convex: the sign-in form accepts either the
--- user id or the email address and checks the scrypt hash in password_hash
--- (see src/convex/password.ts and the actions in src/convex/auth.ts).
+-- Accounts live here: the sign-in form accepts either the user id or the
+-- email address and checks the scrypt hash in password_hash
+-- (see src/server/password.ts and the handlers in src/server/auth.ts).
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE,

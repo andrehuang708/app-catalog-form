@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { queryRows } from "../src/convex/pg";
+import { queryRows } from "../src/server/pg";
 
 /**
  * The database itself cannot be reached in tests (no credentials here), but

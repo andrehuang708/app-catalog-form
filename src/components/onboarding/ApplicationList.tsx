@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import { tenantLabel } from "@/lib/onboarding-schema";
 import { cn } from "@/lib/utils";
 import { useAuthedAction } from "@/hooks/use-authed-action";

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { AuthProvider } from "../src/components/AuthProvider";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -9,8 +8,6 @@ import Dashboard from "../src/pages/Dashboard";
 import Landing from "../src/pages/Landing";
 import OnboardingPage from "../src/pages/OnboardingPage";
 import UsersPage from "../src/pages/UsersPage";
-
-const client = new ConvexReactClient("https://example.convex.cloud");
 
 const fromRoot = (relative: string) =>
   readFileSync(new URL(`../${relative}`, import.meta.url), "utf8");
@@ -81,13 +78,11 @@ describe("landing page", () => {
 
 describe("dashboard page", () => {
   const html = renderToString(
-    <ConvexProvider client={client}>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/dashboard"]}>
-          <Dashboard />
-        </MemoryRouter>
-      </AuthProvider>
-    </ConvexProvider>,
+    <AuthProvider>
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <Dashboard />
+      </MemoryRouter>
+    </AuthProvider>,
   );
 
   it("shows the three summary counters and the recent onboarding table", () => {
@@ -112,13 +107,11 @@ describe("dashboard page", () => {
 
 describe("request onboarding page", () => {
   const html = renderToString(
-    <ConvexProvider client={client}>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/onboarding"]}>
-          <OnboardingPage />
-        </MemoryRouter>
-      </AuthProvider>
-    </ConvexProvider>,
+    <AuthProvider>
+      <MemoryRouter initialEntries={["/onboarding"]}>
+        <OnboardingPage />
+      </MemoryRouter>
+    </AuthProvider>,
   );
 
   it("carries the request heading and the saved list", () => {
@@ -129,13 +122,11 @@ describe("request onboarding page", () => {
 
 describe("users page (admin)", () => {
   const html = renderToString(
-    <ConvexProvider client={client}>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/users"]}>
-          <UsersPage />
-        </MemoryRouter>
-      </AuthProvider>
-    </ConvexProvider>,
+    <AuthProvider>
+      <MemoryRouter initialEntries={["/users"]}>
+        <UsersPage />
+      </MemoryRouter>
+    </AuthProvider>,
   );
 
   it("shows the admin-access guard when signed out or non-admin", () => {
@@ -148,13 +139,11 @@ describe("users page (admin)", () => {
 
 describe("auth page", () => {
   const html = renderToString(
-    <ConvexProvider client={client}>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/auth"]}>
-          <AuthPage redirectAfterAuth="/dashboard" />
-        </MemoryRouter>
-      </AuthProvider>
-    </ConvexProvider>,
+    <AuthProvider>
+      <MemoryRouter initialEntries={["/auth"]}>
+        <AuthPage redirectAfterAuth="/dashboard" />
+      </MemoryRouter>
+    </AuthProvider>,
   );
 
   it("uses the onboarding-form sign-in copy", () => {

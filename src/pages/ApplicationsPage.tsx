@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { statusOf, type ApplicationRow } from "@/components/onboarding/types";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
 import { useAuthedAction } from "@/hooks/use-authed-action";

@@ -1,11 +1,10 @@
+import { api } from "@/api";
 import {
   AuthContext,
   type AuthContextValue,
   type AuthUser,
 } from "@/hooks/use-auth";
 import { readSessionToken, writeSessionToken } from "@/lib/session";
-import { api } from "@/convex/_generated/api";
-import { useAction } from "convex/react";
 import {
   useCallback,
   useEffect,
@@ -15,8 +14,8 @@ import {
 } from "react";
 
 /**
- * Holds the signed-in account in React state and talks to the Postgres-backed
- * auth actions (src/convex/auth.ts). The bearer token round-trips through
+ * Holds the signed-in account in React state and talks to the auth API
+ * (src/server/auth.ts over HTTP). The bearer token round-trips through
  * localStorage so a reload can restore the session without a form fill.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -29,18 +28,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(sessionToken !== null);
   const [needsSetup, setNeedsSetup] = useState(false);
 
-  const setupState = useAction(api.auth.setupState);
-  const signInAction = useAction(api.auth.signIn);
-  const bootstrapAction = useAction(api.auth.bootstrap);
-  const currentUser = useAction(api.auth.currentUser);
-  const signOutAction = useAction(api.auth.signOut);
-
   // Restore the session on mount: ask whether an account exists yet, and if a
   // token was kept, whether it still maps to a live row in `sessions`.
   useEffect(() => {
     let cancelled = false;
 
-    setupState({})
+    api.auth.setupState()
       .then((state) => {
         if (!cancelled) setNeedsSetup(state.needsSetup);
       })
@@ -52,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = readSessionToken();
     if (!token) return;
 
-    currentUser({ sessionToken: token })
+    api.auth.currentUser()
       .then((found) => {
         if (cancelled) return;
         if (found) {
@@ -73,11 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [setupState, currentUser]);
+  }, []);
 
   const signIn = useCallback(
     async (identifier: string, password: string) => {
-      const result = await signInAction({ identifier, password });
+      const result = await api.auth.signIn({ identifier, password });
       writeSessionToken(result.sessionToken);
       setSessionToken(result.sessionToken);
       setUser(result.user);
@@ -85,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       return result.user;
     },
-    [signInAction],
+    [],
   );
 
   const bootstrap = useCallback(
@@ -95,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: string;
       password: string;
     }) => {
-      const result = await bootstrapAction(input);
+      const result = await api.auth.bootstrap(input);
       writeSessionToken(result.sessionToken);
       setSessionToken(result.sessionToken);
       setUser(result.user);
@@ -103,13 +96,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       return result.user;
     },
-    [bootstrapAction],
+    [],
   );
 
   const signOut = useCallback(async () => {
-    const token = readSessionToken();
     try {
-      if (token) await signOutAction({ sessionToken: token });
+      if (readSessionToken()) await api.auth.signOut();
     } catch {
       // Clearing locally is what signs the user out of this browser; the
       // server-side delete is best effort and must not leave them stuck.
@@ -117,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     writeSessionToken(null);
     setSessionToken(null);
     setUser(null);
-  }, [signOutAction]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({

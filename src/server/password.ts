@@ -1,5 +1,3 @@
-"use node";
-
 import {
   createHash,
   randomBytes,
@@ -9,10 +7,10 @@ import {
 
 /**
  * Password and session-token primitives for the Postgres-backed accounts
- * (see src/convex/auth.ts). Only this module touches the raw bytes, so the
+ * (see src/server/auth.ts). Only this module touches the raw bytes, so the
  * storage format has exactly one home.
  *
- * Everything here runs inside Convex Node actions — never in the browser.
+ * Everything here runs inside the API server — never in the browser.
  */
 
 // scrypt cost: N=2^14, r=8, p=1 → ~16 MB and ~50 ms per hash on a laptop,

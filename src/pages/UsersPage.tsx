@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthedAction } from "@/hooks/use-authed-action";

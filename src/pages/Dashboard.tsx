@@ -2,7 +2,7 @@ import { DataTable, type DataTableColumn } from "@/components/admin/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { tenantLabel } from "@/lib/onboarding-schema";
 import { statusOf, type ApplicationRow } from "@/components/onboarding/types";
@@ -101,7 +101,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchStats({})
+    fetchStats()
       .then((value) => {
         if (!cancelled) setStats(value);
       })

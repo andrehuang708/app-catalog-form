@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { hashPassword, verifyPassword } from "../src/convex/password";
+import { hashPassword, verifyPassword } from "../src/server/password";
 
 /**
  * `verifyPassword` promises to return false rather than throw for anything

@@ -12,9 +12,9 @@ export type ListState<T> = {
 /**
  * Runs a listing action once on mount and re-runs it on `reload`.
  *
- * The listing actions in src/convex/onboarding.ts take no arguments beyond
- * the session token, so the hook calls `fetcher()` with none and
- * `useAuthedAction` (a stable function) fills the token in:
+ * The listing functions in src/api/onboarding take no arguments (the fetch
+ * client attaches the session token), so this hook calls `fetcher()` with
+ * none:
  * `const apps = useActionList(useAuthedAction(api.onboarding.listApplications))`.
  *
  * State updates live in the promise callbacks (and `reload`, an event

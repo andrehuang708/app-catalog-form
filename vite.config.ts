@@ -26,7 +26,6 @@ export default defineConfig({
         manualChunks: {
           // Vendor chunks for large libraries
           "react-vendor": ["react", "react-dom", "react-router"],
-          "convex-vendor": ["convex"],
           // Large UI library chunks
           "radix-ui": [
             "@radix-ui/react-accordion",
@@ -98,6 +97,12 @@ export default defineConfig({
     // Keep HMR on, but disable full-screen error overlay
     hmr: {
       overlay: false,
+    },
+    // In development the API server (bun src/server/index.ts) runs on 8080;
+    // the browser never talks to it directly — Vite proxies /api so the app
+    // stays same-origin exactly as it is in the Docker image.
+    proxy: {
+      "/api": "http://localhost:8080",
     },
   },
 });

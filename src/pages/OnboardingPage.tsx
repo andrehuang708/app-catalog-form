@@ -1,7 +1,7 @@
 import { ApplicationList } from "@/components/onboarding/ApplicationList";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import type { ApplicationRow, Stage } from "@/components/onboarding/types";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import { useActionList } from "@/hooks/use-action-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthedAction } from "@/hooks/use-authed-action";

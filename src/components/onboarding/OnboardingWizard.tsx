@@ -1,5 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import { useAuthedAction } from "@/hooks/use-authed-action";
 import { Check, Lock } from "lucide-react";
