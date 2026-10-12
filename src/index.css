@@ -112,6 +112,317 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+@layer components {
+  .graph-header,
+  .graph-path {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) 24px minmax(180px, 1.25fr) 24px minmax(150px, 1fr) 24px minmax(150px, 1fr) 24px minmax(160px, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+  }
+
+  .graph-header {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) 24px minmax(180px, 1.25fr) 24px minmax(150px, 1fr) 24px minmax(150px, 1fr) 24px minmax(160px, 1fr);
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--border);
+    background: var(--muted);
+  }
+
+  .graph-column-heading:nth-child(1) { grid-column: 1; }
+  .graph-column-heading:nth-child(2) { grid-column: 3; }
+  .graph-column-heading:nth-child(3) { grid-column: 5; }
+  .graph-column-heading:nth-child(4) { grid-column: 7; }
+  .graph-column-heading:nth-child(5) { grid-column: 9; }
+
+  .graph-column-heading {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .graph-visual-group + .graph-visual-group {
+    border-top: 1px solid var(--border);
+  }
+
+  .graph-visual-group-heading {
+    display: flex;
+    min-height: 50px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklch, var(--muted) 45%, var(--card));
+    padding: 10px 16px;
+  }
+
+  .graph-scroll {
+    overflow: auto;
+    background-image: radial-gradient(color-mix(in oklch, var(--muted-foreground) 18%, transparent) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .graph-canvas {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .graph-edges {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .graph-connection {
+    fill: none;
+    stroke: color-mix(in oklch, var(--muted-foreground) 48%, var(--border));
+    stroke-width: 1.6;
+  }
+
+  .graph-arrow {
+    fill: color-mix(in oklch, var(--muted-foreground) 60%, var(--border));
+  }
+
+  .graph-visual-node {
+    position: absolute;
+    z-index: 1;
+    display: flex;
+    width: 194px;
+    height: 64px;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    padding: 9px 11px;
+    box-shadow: 0 3px 10px rgb(0 0 0 / 5%);
+  }
+
+  .graph-visual-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  .graph-visual-copy {
+    min-width: 0;
+  }
+
+  .graph-visual-label,
+  .graph-visual-detail {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .graph-visual-label {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .graph-visual-detail {
+    margin-top: 3px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
+
+  .graph-visual-node-tenant .graph-visual-icon {
+    background: oklch(0.95 0.035 260);
+    color: oklch(0.48 0.16 260);
+  }
+
+  .graph-visual-node-namespace .graph-visual-icon {
+    background: oklch(0.95 0.04 190);
+    color: oklch(0.43 0.12 190);
+  }
+
+  .graph-visual-node-application .graph-visual-icon {
+    background: oklch(0.95 0.04 300);
+    color: oklch(0.5 0.15 300);
+  }
+
+  .graph-visual-node-service .graph-visual-icon {
+    background: oklch(0.96 0.045 75);
+    color: oklch(0.53 0.14 65);
+  }
+
+  .graph-visual-node-worker .graph-visual-icon {
+    background: oklch(0.95 0.045 150);
+    color: oklch(0.44 0.12 150);
+  }
+
+  .graph-visual-node-missing {
+    border-style: dashed;
+    border-color: var(--destructive);
+  }
+
+  .graph-visual-node-missing .graph-visual-icon {
+    color: var(--destructive);
+  }
+
+  .graph-group-heading,
+  .graph-subgroup-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .graph-group-heading {
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklch, var(--muted) 55%, var(--card));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .graph-group-heading span,
+  .graph-subgroup-heading span {
+    margin-left: auto;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .graph-subgroup-heading {
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklch, var(--muted) 28%, var(--card));
+  }
+
+  .graph-path {
+    min-height: 82px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .graph-path:last-child {
+    border-bottom: 0;
+  }
+
+  .graph-node {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--background);
+    padding: 9px 10px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  }
+
+  .graph-node-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    place-items: center;
+    border-radius: 7px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  .graph-node-label,
+  .graph-node-detail {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .graph-node-label {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .graph-node-detail {
+    margin-top: 3px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
+
+  .graph-node-tenant .graph-node-icon {
+    background: oklch(0.95 0.035 260);
+    color: oklch(0.48 0.16 260);
+  }
+
+  .graph-node-namespace .graph-node-icon {
+    background: oklch(0.95 0.04 190);
+    color: oklch(0.43 0.12 190);
+  }
+
+  .graph-node-application .graph-node-icon {
+    background: oklch(0.95 0.04 300);
+    color: oklch(0.5 0.15 300);
+  }
+
+  .graph-node-service .graph-node-icon {
+    background: oklch(0.96 0.045 75);
+    color: oklch(0.53 0.14 65);
+  }
+
+  .graph-node-worker .graph-node-icon {
+    background: oklch(0.95 0.045 150);
+    color: oklch(0.44 0.12 150);
+  }
+
+  .graph-node-missing {
+    border-style: dashed;
+    border-color: var(--destructive);
+  }
+
+  .graph-node-missing .graph-node-icon,
+  .graph-node-missing .graph-node-label {
+    color: var(--destructive);
+  }
+
+  .graph-edge {
+    justify-self: center;
+    width: 16px;
+    height: 16px;
+    color: var(--muted-foreground);
+  }
+
+  .graph-workers {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .graph-workers .graph-node {
+    min-width: 145px;
+    flex: 1 1 145px;
+  }
+
+  .graph-empty {
+    grid-column: 1 / -1;
+    padding: 56px 24px;
+    color: var(--muted-foreground);
+    text-align: center;
+    font-size: 13px;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

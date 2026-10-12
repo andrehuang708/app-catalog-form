@@ -17,6 +17,7 @@ const ApplicationsPage = lazy(() => import("./pages/ApplicationsPage.tsx"));
 const NamespacesPage = lazy(() => import("./pages/NamespacesPage.tsx"));
 const ServicesPage = lazy(() => import("./pages/ServicesPage.tsx"));
 const WorkerNodesPage = lazy(() => import("./pages/WorkerNodesPage.tsx"));
+const VisualGraphPage = lazy(() => import("./pages/VisualGraphPage.tsx"));
 const TenantsPage = lazy(() => import("./pages/TenantsPage.tsx"));
 const UsersPage = lazy(() => import("./pages/UsersPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -146,6 +147,7 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/namespaces" element={<NamespacesPage />} />
                   <Route path="/services" element={<ServicesPage />} />
                   <Route path="/worker-nodes" element={<WorkerNodesPage />} />
+                  <Route path="/visual-graph" element={<VisualGraphPage />} />
                   <Route path="/tenants" element={<TenantsPage />} />
                   <Route path="/users" element={<UsersPage />} />
                 </Route>

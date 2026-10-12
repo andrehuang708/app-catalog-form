@@ -24,6 +24,7 @@ import {
   HardDrive,
   Home,
   LayoutGrid,
+  Network,
   Server,
   Users,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const NAV_ITEMS: Array<{
   { to: "/namespaces", label: "Namespace", icon: Boxes },
   { to: "/services", label: "Service", icon: Server },
   { to: "/worker-nodes", label: "Worker Nodes", icon: HardDrive },
+  { to: "/visual-graph", label: "Visual Graph", icon: Network },
   { to: "/tenants", label: "Tenant", icon: Building2 },
   { to: "/users", label: "Users", icon: Users, adminOnly: true },
 ];
