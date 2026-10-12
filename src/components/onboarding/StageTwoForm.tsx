@@ -46,14 +46,20 @@ export function StageTwoForm({
   const form = useForm<StageTwoValues>({
     resolver: zodResolver(workerNodesSchema(total)),
     defaultValues: {
-      nodes:
-        initialNodes.length > 0
-          ? initialNodes.map((node) => ({
-              ipAddress: node.ipAddress,
-              hostname: node.hostname,
-              joinedCluster: node.joinedCluster,
-            }))
-          : Array.from({ length: total }, emptyNode),
+      // Saved rows first (their values are never re-written), then empty rows
+      // for any workers the stage 1 total added since the last save — so
+      // raising the budget in stage 1 opens ready-to-fill slots here.
+      nodes: [
+        ...initialNodes.map((node) => ({
+          ipAddress: node.ipAddress,
+          hostname: node.hostname,
+          joinedCluster: node.joinedCluster,
+        })),
+        ...Array.from(
+          { length: Math.max(0, total - initialNodes.length) },
+          emptyNode,
+        ),
+      ],
     },
     mode: "onBlur",
   });
@@ -99,6 +105,11 @@ export function StageTwoForm({
         List the {total} worker node{total === 1 ? "" : "s"} reserved for{" "}
         {application.applicationName} — IP address, hostname, and whether each
         node has joined the cluster.
+        {initialNodes.length > 0 &&
+          initialNodes.length < total &&
+          ` Fill in the ${total - initialNodes.length} new row${
+            total - initialNodes.length === 1 ? "" : "s"
+          } below — the saved nodes keep their values.`}
       </p>
 
       <Form {...form}>

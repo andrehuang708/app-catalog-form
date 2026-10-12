@@ -23,6 +23,9 @@ function stageOptions(application: ApplicationRow) {
   const nodesOk =
     application.nodeCount === application.totalWorkerNodes &&
     application.nodeCount > 0;
+  // Saved services pin the node list only while it matches the stage 1 total;
+  // raising or lowering that total reopens stage 2 for the difference.
+  const stage2Locked = application.serviceCount > 0 && nodesOk;
   return [
     {
       stage: 1 as const,
@@ -33,11 +36,10 @@ function stageOptions(application: ApplicationRow) {
     {
       stage: 2 as const,
       label: "Stage 2 · Worker nodes",
-      hint:
-        application.serviceCount > 0
-          ? "Locked — services already reference these nodes."
-          : "IP addresses, hostnames, and cluster join status.",
-      disabled: application.serviceCount > 0,
+      hint: stage2Locked
+        ? "Locked — services already reference these nodes."
+        : "IP addresses, hostnames, and cluster join status.",
+      disabled: stage2Locked,
     },
     {
       stage: 3 as const,

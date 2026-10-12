@@ -27,8 +27,9 @@ type Props = {
 /**
  * The stage a resumed application should open at: stage 1 for a new
  * application, stage 2 until the node list matches stage 1, then stage 3.
- * A requested stage wins when it is reachable (stage 2 locks once services
- * are saved; stage 3 needs a complete node list).
+ * A requested stage wins when it is reachable (stage 2 reopens whenever the
+ * node list drifts from the total — that is how new workers get added; stage 3
+ * needs the complete node list).
  */
 function initialStageFor(
   application: ApplicationRow | null,
@@ -40,7 +41,8 @@ function initialStageFor(
     application.nodeCount > 0;
   const base: Stage = nodesOk ? 3 : 2;
   if (requested === 1) return 1;
-  if (requested === 2 && application.serviceCount === 0) return 2;
+  if (requested === 2 && (application.serviceCount === 0 || !nodesOk))
+    return 2;
   if (requested === 3 && nodesOk) return 3;
   return base;
 }
@@ -114,24 +116,33 @@ export function OnboardingWizard({
   }, [application, fetchNodes, fetchServices]);
 
   const serviceCount = application?.serviceCount ?? 0;
-  const servicesLocked = serviceCount > 0;
+  const servicesSaved = serviceCount > 0;
   const nodesOk =
     application !== null &&
     application.nodeCount === application.totalWorkerNodes &&
     application.nodeCount > 0;
+  // Saved services pin the current node list, but only while it matches the
+  // total reserved in stage 1 — raising or lowering that total reopens stage 2
+  // so the extra workers can be added (or surplus rows dropped).
+  const stage2Locked = servicesSaved && nodesOk;
   const done: Record<Stage, boolean> = {
     1: application !== null,
     2: nodesOk,
-    3: servicesLocked,
+    3: servicesSaved,
   };
 
   const canVisit = (target: Stage) =>
-    target <= maxStage && !(target === 2 && servicesLocked);
+    target <= maxStage &&
+    !(target === 2 && stage2Locked) &&
+    !(target === 3 && !nodesOk);
 
   const handleStageOneSaved = (row: ApplicationRow) => {
     onApplicationChange(row);
-    setStage(2);
-    setMaxStage((current) => (current < 2 ? 2 : current));
+    // Continue to whatever the row still needs: stage 2 while the node list is
+    // out of sync (or absent), stage 3 once it matches.
+    const next = initialStageFor(row);
+    setStage(next);
+    setMaxStage((current) => (current < next ? next : current));
   };
 
   const handleStageTwoSaved = (savedNodes: WorkerNodeRow[]) => {
@@ -141,8 +152,14 @@ export function OnboardingWizard({
         ...application,
         nodeCount: savedNodes.length,
       });
-    setStage(3);
-    setMaxStage((current) => (current < 3 ? 3 : current));
+    // Reopen stage 3 only when the list is now complete — saving a partial
+    // list (fewer rows than the total) keeps the focus on stage 2.
+    const complete =
+      application !== null && savedNodes.length === application.totalWorkerNodes;
+    if (complete) {
+      setStage(3);
+      setMaxStage((current) => (current < 3 ? 3 : current));
+    }
   };
 
   const handleStageThreeSaved = (savedServices: ServiceRow[]) => {
@@ -173,8 +190,10 @@ export function OnboardingWizard({
                 aria-current={active ? "step" : undefined}
                 title={
                   locked && step.stage === 2
-                    ? "Worker nodes are locked once services are saved."
-                    : undefined
+                    ? "Locked — services already reference these nodes. Change the total in stage 1 to add workers."
+                    : locked && step.stage === 3
+                      ? "Save the complete worker node list in stage 2 first."
+                      : undefined
                 }
                 className={cn(
                   "flex w-full flex-col gap-1 px-4 py-3 text-left transition-colors",
@@ -232,7 +251,7 @@ export function OnboardingWizard({
               application={application}
               nodes={nodes}
               savedServices={services}
-              onBack={servicesLocked ? undefined : () => setStage(2)}
+              onBack={stage2Locked ? undefined : () => setStage(2)}
               onSaved={handleStageThreeSaved}
             />
           ))}

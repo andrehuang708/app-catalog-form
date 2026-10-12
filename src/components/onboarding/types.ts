@@ -43,11 +43,13 @@ export type ApplicationStatus = { label: string; complete: boolean };
 
 /** Where an application stands in the three-stage flow. */
 export function statusOf(application: ApplicationRow): ApplicationStatus {
-  if (application.serviceCount > 0)
-    return { label: "Complete", complete: true };
   if (application.nodeCount === 0)
     return { label: "Worker nodes needed", complete: false };
+  // Out of sync wins over "Complete": the stage 1 total can change after
+  // services are saved, which reopens stage 2 for the added workers.
   if (application.nodeCount !== application.totalWorkerNodes)
     return { label: "Worker nodes out of sync", complete: false };
+  if (application.serviceCount > 0)
+    return { label: "Complete", complete: true };
   return { label: "Services needed", complete: false };
 }

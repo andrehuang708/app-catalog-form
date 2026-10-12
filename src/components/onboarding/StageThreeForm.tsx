@@ -61,12 +61,85 @@ function Detail({
 }
 
 /**
+ * The per-service node selector: one toggle per stage 2 worker node. Used for
+ * the add form and for every row in the list, so existing services can pick up
+ * new workers (or drop old ones) without being re-added.
+ */
+function NodeSelectorEditor({
+  idPrefix,
+  nodes,
+  selected,
+  disabled,
+  showEmptyHint = false,
+  onChange,
+}: {
+  idPrefix: string;
+  nodes: WorkerNodeRow[];
+  selected: string[];
+  disabled?: boolean;
+  /** Flag an empty selection inline (list rows). The add form leaves it to
+   *  its FormMessage so an untouched form stays quiet. */
+  showEmptyHint?: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+        Node selector
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {nodes.map((node) => {
+          const inputId = `${idPrefix}-${node._id}`;
+          const checked = selected.includes(node.hostname);
+          return (
+            <div
+              key={node._id}
+              className="border-input flex items-center gap-2.5 rounded-md border px-2.5 py-1.5 transition-colors has-data-[state=checked]:bg-muted/60"
+            >
+              <Checkbox
+                id={inputId}
+                checked={checked}
+                disabled={disabled}
+                onCheckedChange={(value) =>
+                  onChange(
+                    value === true
+                      ? [...selected, node.hostname]
+                      : selected.filter((name) => name !== node.hostname),
+                  )
+                }
+              />
+              <Label
+                htmlFor={inputId}
+                className="min-w-0 cursor-pointer truncate text-sm font-normal"
+              >
+                <span className="font-mono">{node.hostname}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {node.ipAddress}
+                </span>
+              </Label>
+            </div>
+          );
+        })}
+      </div>
+      {showEmptyHint && selected.length === 0 && (
+        <p className="text-destructive mt-2 text-sm">
+          Choose at least one worker node.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Stage 3 — a free-length service list. Each entry stores a namespace built as
  * applicationname-tenant-(freetext), the service name, port, health check URL,
  * node selector (chosen from the stage 2 nodes), and a free-text description.
  * Namespaces are reusable: several services may share one, and the namespace
- * field autocompletes against the namespaces already in the list. The whole
- * list is saved in one mutation.
+ * field autocompletes against the namespaces already in the list. Every row in
+ * the list — saved or new — carries its own node selector toggles, so a service
+ * can be re-pointed at workers added in stage 2 without being re-added. The
+ * whole list is saved in one mutation.
  */
 export function StageThreeForm({
   application,
@@ -77,6 +150,9 @@ export function StageThreeForm({
 }: Props) {
   const saveServices = useAuthedAction(api.onboarding.saveServices);
   const [draft, setDraft] = useState<ServiceFormValues[]>([]);
+  // Selector edits for already-saved rows, held here until "Save services"
+  // persists the whole list (the mutation rewrites every row in one go).
+  const [nodeEdits, setNodeEdits] = useState<Record<string, string[]>>({});
 
   const context: ServiceContext = {
     applicationName: application.applicationName,
@@ -135,6 +211,13 @@ export function StageThreeForm({
     form.setFocus("serviceName");
   };
 
+  // Selectors pointing at nodes that no longer exist are dropped, so the list
+  // stays savable against the current stage 2 roster.
+  const knownNode = (name: string) =>
+    nodes.some((node) => node.hostname === name);
+  const selectorsFor = (id: string, current: string[]) =>
+    (nodeEdits[id] ?? current).filter(knownNode);
+
   const savedValues: ServiceFormValues[] = savedServices.map((service) => ({
     namespaceSuffix: namespaceSuffixOf(
       application.applicationName,
@@ -144,7 +227,7 @@ export function StageThreeForm({
     serviceName: service.serviceName,
     port: String(service.port),
     healthcheckUrl: service.healthcheckUrl,
-    nodeSelectors: service.nodeSelectors,
+    nodeSelectors: selectorsFor(service._id, service.nodeSelectors),
     description: service.description,
   }));
 
@@ -173,6 +256,15 @@ export function StageThreeForm({
   };
 
   const onSave = async () => {
+    const incomplete = combined.find(
+      (service) => service.nodeSelectors.length === 0,
+    );
+    if (incomplete) {
+      toast.error("Could not save the services", {
+        description: `${incomplete.serviceName || "Each service"} needs at least one worker node.`,
+      });
+      return;
+    }
     try {
       const saved = await saveServices({
         applicationId: application._id,
@@ -186,6 +278,7 @@ export function StageThreeForm({
         })),
       });
       setDraft([]);
+      setNodeEdits({});
       toast.success("Services saved", {
         description: `${saved.length} service${saved.length === 1 ? "" : "s"} saved for ${application.applicationName}.`,
       });
@@ -361,44 +454,13 @@ export function StageThreeForm({
             name="nodeSelectors"
             render={({ field }) => (
               <FormItem className="grid gap-3">
-                <FormLabel>Node selector</FormLabel>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {nodes.map((node) => {
-                    const inputId = `selector-${node._id}`;
-                    const checked = field.value.includes(node.hostname);
-                    return (
-                      <div
-                        key={node._id}
-                        className="border-input flex items-center gap-2.5 rounded-md border px-3 py-2.5 transition-colors has-data-[state=checked]:bg-muted/60"
-                      >
-                        <Checkbox
-                          id={inputId}
-                          checked={checked}
-                          disabled={isSubmitting}
-                          onCheckedChange={(value) =>
-                            field.onChange(
-                              value === true
-                                ? [...field.value, node.hostname]
-                                : field.value.filter(
-                                    (name) => name !== node.hostname,
-                                  ),
-                            )
-                          }
-                        />
-                        <Label
-                          htmlFor={inputId}
-                          className="min-w-0 cursor-pointer truncate text-sm font-normal"
-                        >
-                          <span className="font-mono">{node.hostname}</span>
-                          <span className="text-muted-foreground">
-                            {" "}
-                            · {node.ipAddress}
-                          </span>
-                        </Label>
-                      </div>
-                    );
-                  })}
-                </div>
+                <NodeSelectorEditor
+                  idPrefix="selector"
+                  nodes={nodes}
+                  selected={field.value}
+                  disabled={isSubmitting}
+                  onChange={field.onChange}
+                />
                 <FormDescription>
                   The stage 2 worker nodes this service may run on.
                 </FormDescription>
@@ -490,11 +552,24 @@ export function StageThreeForm({
                       <ArrowUpRight className="mt-0.5 size-3.5 shrink-0" />
                     </a>
                   </Detail>
-                  <Detail label="Nodes" className="col-span-2 sm:col-span-1">
-                    <span className="font-mono text-[13px]">
-                      {service.nodeSelectors.join(", ")}
-                    </span>
-                  </Detail>
+                  <div className="col-span-2 sm:col-span-3">
+                    <NodeSelectorEditor
+                      idPrefix={`saved-${service._id}`}
+                      nodes={nodes}
+                      selected={selectorsFor(
+                        service._id,
+                        service.nodeSelectors,
+                      )}
+                      disabled={isSubmitting}
+                      showEmptyHint
+                      onChange={(next) =>
+                        setNodeEdits((current) => ({
+                          ...current,
+                          [service._id]: next,
+                        }))
+                      }
+                    />
+                  </div>
                   <Detail
                     label="Description"
                     className="col-span-2 sm:col-span-3"
@@ -542,11 +617,22 @@ export function StageThreeForm({
                       {service.healthcheckUrl}
                     </span>
                   </Detail>
-                  <Detail label="Nodes" className="col-span-2 sm:col-span-1">
-                    <span className="font-mono text-[13px]">
-                      {service.nodeSelectors.join(", ")}
-                    </span>
-                  </Detail>
+                  <div className="col-span-2 sm:col-span-3">
+                    <NodeSelectorEditor
+                      idPrefix={`draft-${index}`}
+                      nodes={nodes}
+                      selected={service.nodeSelectors}
+                      disabled={isSubmitting}
+                      showEmptyHint
+                      onChange={(next) =>
+                        setDraft((current) =>
+                          current.map((row, i) =>
+                            i === index ? { ...row, nodeSelectors: next } : row,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
                   <Detail
                     label="Description"
                     className="col-span-2 sm:col-span-3"

@@ -260,13 +260,16 @@ export async function updateApplication(args: {
     [args.applicationId],
   );
   if (serviceCounts[0].count > 0) {
+    // Name and tenant are baked into every saved namespace, so they are
+    // fixed. The worker node budget is not: raising (or lowering) it just
+    // makes stage 2's list out of sync, and the wizard sends the user there
+    // to add the new nodes before stage 3 opens again.
     const fixed =
       values.applicationName !== application.application_name ||
-      values.tenant !== application.tenant ||
-      Number(values.totalWorkerNodes) !== application.total_worker_nodes;
+      values.tenant !== application.tenant;
     if (fixed)
       reject(
-        "The application name, tenant, and total worker nodes are fixed once services are saved.",
+        "The application name and tenant are fixed once services are saved.",
       );
   }
 
