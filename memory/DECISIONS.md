@@ -1,0 +1,13 @@
+# DECISIONS.md — Keputusan Arsitektur & Produk
+
+Catat keputusan yang mengikat di sini agar Freebuff dan Codex tidak mengulang perdebatan.
+
+1. **Postgres satu-satunya, tanpa Convex** — repo dimigrasikan dari Convex ke Hono+Postgres (`54d96ba`). Alasan: deploy air-gapped tanpa dependensi eksternal. Konsekuensi: semua data via `queryRows` parameterized; DDL idempoten di `src/server/pg.ts`; tidak ada migration step.
+2. **Satu proses Bun serve API + static** (`src/server/index.ts`) — `/api/*` JSON (`{error}` + status `ApiError`), selain itu `dist/` + SPA fallback. Alasan: simpel untuk Docker/air-gapped. Konsekuensi: jangan tambah CORS; Vite proxy `/api`→:8080 saat dev.
+3. **Auth scrypt + sha256 session** (`src/server/auth.ts`, `password.ts`) — password = scrypt hash, token mentah hanya di browser, yang disimpan hanya sha256. `sessionUser` return null untuk unknown/expired/revoked. Konsekuensi: semua handler awali `requireSignedIn`; admin handlers tambah `requireAdmin`.
+4. **Namespace `app-tenant-(freetext)`, reusable** (`src/lib/onboarding-schema.ts`) — namespace unik per tenant tapi boleh dipakai banyak service; saran reuse via `namespaceSuggestions`. Full namespace max 63 char (K8s), suffix max 40. Konsekuensi: `applicationName`+`tenant` locked setelah service tersimpan.
+5. **`totalWorkerNodes` boleh diubah setelah service ada** (komit `72d4b82`) — budget bukan bagian identitas namespace. Mengubahnya membuat status `out of sync` (menang atas Complete) dan membuka ulang stage 2 (baris lama dipertahankan + slot kosong). `updateApplication` hanya tolak ubah nama/tenant; `saveWorkerNodes` tolak jika service jadi tanpa node.
+6. **Stage 3 save = rewrite atomik + editor per baris** — `nodeEdits` per saved row + toggle per draft row, validasi min-1-node per service sebelum mutasi, selector ke node yang hilang di-drop. Alasan: service bisa di-repoint ke worker baru tanpa re-add.
+7. **Visual Graph = pure function + grouping** (`src/lib/visual-graph.ts`, komit `618a43c`) — `buildVisualGraphRows` join scoped per-application; layout kolom 5 lapis dengan ordering anti-crossing; grouping `all|tenant|namespace|application`. Node hilang = `missing` (bukan dihilangkan). Alasan: mudah di-test (`tests/visual-graph.test.ts`) tanpa DOM.
+8. **Numerik tetap string di form** — `wholeNumber` zod + konversi `Number(...)`/`String(...)` di batas mutasi. Alasan: partial input ("", "0") tidak jadi NaN di tengah ketik.
+9. **UI conventions**: shadcn default, `cursor-pointer` untuk klik, `Loader2` bukan skeleton, tanpa nested-card/shadow, mobile-responsive + dark/light via token oklch di `src/index.css`.
